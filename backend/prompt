@@ -1,0 +1,176 @@
+
+百度千帆appbuilder OpenAPI示例:
+
+1. 新建会话
+
+该接口用于新增对话，对话的有效期为7天。超过之后可能无法使用，需要重新生成。
+
+
+body 必填字段 app_id
+
+
+请求curl 示例
+
+curl --location 'https://qianfan.baidubce.com/v2/app/conversation' \
+--header 'Authorization: Bearer authorization string' \
+--header 'Content-Type: application/json' \
+--data '{
+    "app_id": "85036d8f-239c-469c-b342-b62ca9d696f6"
+}'
+
+
+正确响应示例
+
+HTTP/1.1 200 OK
+{
+  "request_id": "355a4f4e-a6d8-4dec-b840-7075030c6d22",
+  "conversation_id": "2370813b-5303-4a4f-b5cc-44f571121342"
+}
+
+
+错误响应示例
+HTTP/1.1 401
+{
+  "request_id": "ae2225f7-1c2e-427a-a1ad-5413b762957d",
+  "code": "PermissionDeniedError",
+  "message": "没有权限"
+}
+
+
+
+2. 上传文件
+
+该接口用于在对话中上传文件供大模型处理，文件的有效期为7天并且不超过对话的有效期。一次只能上传一个文件。
+
+输入参数
+
+app_id, file, conversation_id
+
+
+请求curl 示例
+curl --location 'https://qianfan.baidubce.com/v2/app/conversation/file/upload' \
+--header 'Authorization:  Bearer authorization string' \
+--form 'file=@"GBSJEEB-5/test.jsonl"' \
+--form 'app_id="85036d8f-239c-469c-b342-b62ca9d696f6"' \
+--form 'conversation_id="355a4f4e-a6d8-4dec-b840-7075030c6d22"'
+
+
+正确响应示例
+HTTP/1.1 200 OK
+{
+  "request_id": "355a4f4e-a6d8-4dec-b840-7075030c6d22",
+  "id": "1a1385ca-91ff-4b71-bb2a-048db17507c6",
+  "conversation_id": "355a4f4e-a6d8-4dec-b840-7075030c6d22"
+}
+
+错误响应示例
+HTTP/1.1 400
+{
+  "request_id": "ae2225f7-1c2e-427a-a1ad-5413b762957d",
+  "code": "InvalidRequestArgumentError",
+  "message": "参数校验失败"
+}
+
+3. 大模型对话
+
+字段  类型  必填  说明
+app_id  string  是   app_id，来源于个人空间-应用-应用ID。
+query   string  是   用户query文字， 长度限制2000字符。
+stream  bool    是   是否以流式接口的形式返回数据，默认false。
+conversation_id string  是   对话id，可通过新建会话接口创建。
+file_ids    list[string]    否   如果在对话中上传了文件，可以将文件id放入该字段，目前只处理第一个文件
+
+
+请求curl示例
+
+
+curl --location 'https://qianfan.baidubce.com/v2/app/conversation/runs' \
+--header 'Authorization: Bearer authorization string' \
+--header 'Content-Type: application/json' \
+--data '{
+    "app_id": "85036d8f-239c-469c-b342-b62ca9d696f6",
+    "query": "根据文件中的数据，统计这几所学校小学生有多少",
+    "stream": true,
+    "conversation_id": "355a4f4e-a6d8-4dec-b840-7075030c6d22",
+    "file_ids": [
+        "cdd1e194-cfb7-4173-a154-795fae8535d9"
+    ]
+}'
+
+
+正确响应示例
+HTTP/1.1 200 OK
+
+// 一条 function_call事件类型的流式消息
+{
+    "request_id": "a335502e-502d-426d-9e87-ea8ad47efc8d",
+    "date": "2024-04-26T09:11:13Z",
+    "answer": "",
+    "conversation_id": "1fdc9182-de2d-4c56-bf64-a72d98c2b59f",
+    "message_id": "66c1c8c5-d04a-4376-91ff-3a7285e698f0",
+    "is_completion": false,
+    "content": [
+        {
+            "event_code": 0,
+            "event_message": "",
+            "event_type": "function_call",
+            "event_id": "6",
+            "event_status": "done",
+            "content_type": "function_call",
+            "outputs": {
+                "text": {
+                    "arguments": {
+                        "query": "对'北京小学.xlsx'文件中的'count'列数据进行求和操作",
+                        "upload_file": "北京小学.xlsx"
+                    },
+                    "component_code": "CodeInterpreter",
+                    "component_name": "代码解释器"
+                }
+            }
+        }
+    ]
+}
+
+
+// 一条 ChatAgent 事件类型的流式消息
+{
+    "request_id": "a335502e-502d-426d-9e87-ea8ad47efc8d",
+    "date": "2024-04-26T09:11:59Z",
+    "answer": "北京小学.xlsx'文件中的数据，这几所学校小学生的总数为：430人。",
+    "conversation_id": "1fdc9182-de2d-4c56-bf64-a72d98c2b59f",
+    "message_id": "66c1c8c5-d04a-4376-91ff-3a7285e698f0",
+    "is_completion": false,
+    "content": [
+        {
+            "event_code": 0,
+            "event_message": "",
+            "event_type": "ChatAgent",
+            "event_id": "13",
+            "event_status": "running",
+            "content_type": "text",
+            "outputs": {
+                "text": "北京小学.xlsx'文件中的数据，这几所学校小学生的总数为：430人。"
+            }
+        }
+    ]
+}
+
+
+// 成功开启流式消息后，有出现异常需要终止流，返回的异常消息
+
+{
+  "request_id": "ae2225f7-1c2e-427a-a1ad-5413b762957d",
+  "code": "ChatError",
+  "message": "流式消息发生异常"
+}
+
+
+
+错误响应示例
+HTTP/1.1 401 OK
+
+{
+  "request_id": "ae2225f7-1c2e-427a-a1ad-5413b762957d",
+  "code": "PermissionDeniedError",
+  "message": "没有权限"
+}
