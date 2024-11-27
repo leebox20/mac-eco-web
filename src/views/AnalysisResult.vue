@@ -134,29 +134,71 @@ const chartIds = computed(() => {
 })
 
 // 从缓存中获取图表数据
-const loadChartData = () => {
-  const cachedData = localStorage.getItem('selectedChartsData')
-  if (cachedData) {
-    try {
-      return JSON.parse(cachedData)
-    } catch (e) {
-      console.error('Failed to parse cached chart data:', e)
+const loadChartData = (chartIds) => {
+  try {
+    // 验证元数据
+    const chartMetaStr = sessionStorage.getItem('selectedChartMeta')
+    const totalChunks = sessionStorage.getItem('selectedChartChunks')
+    if (!chartMetaStr || !totalChunks) {
+      console.error('No chart metadata or chunk info found')
+      return null
     }
+
+    const chartMeta = JSON.parse(chartMetaStr)
+    const selectedMeta = chartMeta.filter(meta => chartIds.includes(String(meta.id)))
+
+    // 从所有数据块中加载数据
+    const chartsData = []
+    const numChunks = parseInt(totalChunks)
+    
+    for (let i = 0; i < numChunks; i++) {
+      const chunkStr = sessionStorage.getItem(`selectedChartData_${i}`)
+      if (!chunkStr) {
+        console.error(`Missing chunk ${i}`)
+        continue
+      }
+      
+      const chunk = JSON.parse(chunkStr)
+      chunk.forEach(chart => {
+        if (chartIds.includes(String(chart.id))) {
+          const meta = selectedMeta.find(m => m.id === chart.id)
+          if (meta) {
+            chartsData.push({
+              id: chart.id,
+              name: meta.name,
+              time: chart.time,
+              data: chart.data
+            })
+          }
+        }
+      })
+    }
+
+    // 验证是否所有选中的图表都被加载
+    if (chartsData.length !== selectedMeta.length) {
+      console.error(`Not all charts were loaded. Expected ${selectedMeta.length}, got ${chartsData.length}`)
+      return null
+    }
+
+    // 按照原始顺序排序
+    chartsData.sort((a, b) => {
+      const aIndex = chartIds.indexOf(String(a.id))
+      const bIndex = chartIds.indexOf(String(b.id))
+      return aIndex - bIndex
+    })
+
+    return chartsData
+  } catch (e) {
+    console.error('Failed to load chart data:', e)
+    return null
   }
-  return null
 }
 
 // 更新图表配置
 const updateChartOption = (selectedCharts) => {
-  const chartData = loadChartData()
-  if (!chartData) {
+  const chartData = loadChartData(selectedCharts)
+  if (!chartData || !chartData.length) {
     console.error('No chart data found in cache')
-    return
-  }
-
-  const selectedData = chartData.filter(chart => selectedCharts.includes(String(chart.id)))
-  if (!selectedData.length) {
-    console.error('No matching chart data found for selected IDs')
     return
   }
 
@@ -173,7 +215,7 @@ const updateChartOption = (selectedCharts) => {
       }
     },
     legend: {
-      data: selectedData.map(d => d.name),
+      data: chartData.map(d => d.name),
       type: 'scroll',
       orient: 'horizontal',
       bottom: 0
@@ -187,10 +229,10 @@ const updateChartOption = (selectedCharts) => {
     },
     xAxis: {
       type: 'category',
-      data: selectedData[0].time,
+      data: chartData[0].time,
       axisLabel: {
         rotate: 45,
-        interval: Math.floor(selectedData[0].time.length / 10)
+        interval: Math.floor(chartData[0].time.length / 10)
       }
     },
     yAxis: {
@@ -199,7 +241,7 @@ const updateChartOption = (selectedCharts) => {
         formatter: '{value}'
       }
     },
-    series: selectedData.map(d => ({
+    series: chartData.map(d => ({
       name: d.name,
       type: 'line',
       data: d.data,

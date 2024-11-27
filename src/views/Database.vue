@@ -628,14 +628,9 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isLoading.value = true
-      // 只保存必要的图表数据
-      const chartsData = selectedCharts.value.map(chart => ({
-        id: chart.id,
-        name: chart.title,
-        time: chart.option.xAxis.data,
-        data: chart.option.series[0].data
-      }))
-      localStorage.setItem('selectedChartsData', JSON.stringify(chartsData))
+      if (!saveSelectedChartsToCache(selectedCharts.value)) {
+        throw new Error('保存图表数据失败')
+      }
       router.push({
         name: 'analysis-result',
         query: {
@@ -772,6 +767,49 @@ function generateChartOption({ name, unit, time, data }) {
         end: 100
       }
     ]
+  }
+}
+
+// 将选中的图表数据保存到缓存
+const saveSelectedChartsToCache = (charts) => {
+  try {
+    // 清理之前的数据
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key.startsWith('selectedChart')) {
+        sessionStorage.removeItem(key)
+      }
+    }
+
+    // 保存图表基本信息
+    const chartMeta = charts.map(chart => ({
+      id: chart.id,
+      name: chart.title
+    }))
+    sessionStorage.setItem('selectedChartMeta', JSON.stringify(chartMeta))
+
+    // 分块保存数据，每块最多2个图表，减小每块的大小
+    const chunkSize = 2
+    for (let i = 0; i < charts.length; i += chunkSize) {
+      const chunk = charts.slice(i, i + chunkSize).map(chart => ({
+        id: chart.id,
+        time: chart.option.xAxis.data,
+        data: chart.option.series[0].data
+      }))
+      try {
+        sessionStorage.setItem(`selectedChartData_${Math.floor(i / chunkSize)}`, JSON.stringify(chunk))
+      } catch (e) {
+        console.error(`Failed to save chunk ${i}:`, e)
+        return false
+      }
+    }
+
+    // 保存块数量，用于加载时验证
+    sessionStorage.setItem('selectedChartChunks', Math.ceil(charts.length / chunkSize))
+    return true
+  } catch (error) {
+    console.error('保存选中图表数据失败:', error)
+    return false
   }
 }
 
