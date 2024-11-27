@@ -99,12 +99,13 @@
             <div
               v-for="item in selectedCharts"
               :key="item.id"
-              class="flex items-center bg-gray-100 px-3 py-2 rounded-lg"
+              class="flex flex-col items-center bg-gray-100 p-3 rounded-lg relative"
             >
-              <span class="text-sm text-gray-700 mr-2">{{ item.title }}</span>
+              <BarChartIcon class="h-8 w-8 text-green-500 mb-2" />
+              <span class="text-sm text-gray-700 text-center">{{ item.title }}</span>
               <button
                 @click="removeFromComparison(item)"
-                class="text-gray-400 hover:text-gray-600"
+                class="absolute top-1 right-1 text-gray-400 hover:text-gray-600"
               >
                 <XIcon class="h-4 w-4" />
               </button>
