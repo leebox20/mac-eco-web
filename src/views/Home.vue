@@ -59,8 +59,12 @@
               <div class="text-[#4080FF] mb-4">
                 <i class="fas fa-robot text-3xl"></i>
               </div>
-              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">AI智能预测</h3>
-              <p class="text-[#64748B] text-sm leading-relaxed">
+              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">
+                <router-link to="/ai-assistant" class="hover:text-[#4080FF] transition-colors">
+                  AI智能预测
+                </router-link>
+              </h3>
+              <p class="text-[#64748B] text-sm leading-relaxed">  
                 基于先进算法，快速从海量数据中找到关键信息，提供高可信度的未来经济形势预测。
               </p>
             </div>
@@ -70,7 +74,11 @@
               <div class="text-[#4080FF] mb-4">
                 <i class="fas fa-chart-line text-3xl"></i>
               </div>
-              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">横向数据对比</h3>
+              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">
+                <router-link to="/database" class="hover:text-[#4080FF] transition-colors">
+                  横向数据对比
+                </router-link>
+              </h3>
               <p class="text-[#64748B] text-sm leading-relaxed">
                 从海量数据库轻松锁定不同行业和年份的经济趋势进行对比，数据至简，结果直观。
               </p>

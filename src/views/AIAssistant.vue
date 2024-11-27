@@ -80,7 +80,16 @@
                     </div>
                     <div class="max-w-[80%]">
                       <div class="bg-blue-50 rounded-lg p-4 inline-block">
-                        <p class="text-gray-700 whitespace-pre-wrap break-words text-left">{{ message.content }}</p>
+                        <template v-if="message.content || !isLoading">
+                          <div class="text-gray-700 whitespace-pre-wrap break-words text-left prose prose-sm max-w-none prose-p:my-1 prose-li:my-1" v-html="renderMarkdown(message.content)"></div>
+                        </template>
+                        <template v-else>
+                          <div class="flex space-x-2">
+                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                          </div>
+                        </template>
                       </div>
                     </div>
                   </template>
@@ -89,29 +98,13 @@
                   <template v-else>
                     <div class="max-w-[80%] ml-auto">
                       <div class="bg-blue-500 text-white rounded-lg p-4 inline-block">
-                        <p class="whitespace-pre-wrap break-words text-left">{{ message.content }}</p>
+                        <p class="whitespace-pre-wrap break-words text-left text-sm">{{ message.content }}</p>
                       </div>
                     </div>
                     <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                       <i class="fas fa-user text-gray-500"></i>
                     </div>
                   </template>
-                </div>
-
-                                                                  <!-- 加载动画 -->
-                <div v-if="isLoading" class="flex items-start space-x-3">
-                  <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-robot text-white text-lg"></i>
-                  </div>
-                  <div class="max-w-[80%]">
-                    <div class="bg-blue-50 rounded-lg p-4 inline-block">
-                      <div class="flex space-x-2">
-                        <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                        <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-                        <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
               </template>
@@ -182,55 +175,79 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import TheHeader from '@/components/TheHeader.vue'
-import axios from 'axios'
+import TheFooter from '@/components/TheFooter.vue'
+import MarkdownIt from 'markdown-it'
+
+// 初始化markdown解析器
+const md = new MarkdownIt({
+  html: true,
+  breaks: true,
+  linkify: true
+})
+
+// 自定义渲染规则，减少空行
+md.renderer.rules.paragraph_open = () => '<p class="mb-1">'
+md.renderer.rules.list_item_open = () => '<li class="mb-1">'
+
+// 解析markdown内容
+const renderMarkdown = (content) => {
+  if (!content) return ''
+  return md.render(content)
+}
 
 // API配置
 const API_BASE_URL = 'http://127.0.0.1:8888'
-const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  }
-})
 
 // 状态变量
 const conversations = ref([])
 const currentConversationId = ref(null)
 const messages = ref([])
 const inputMessage = ref('')
-const isLoading = ref(false)  // 添加加载状态
+const isLoading = ref(false)
 
-// 获取所有对话历史
-const fetchConversations = async () => {
-  try {
-    const response = await axiosInstance.get('/conversations')
-    conversations.value = response.data
-  } catch (error) {
-    console.error('获取对话历史失败:', error)
-  }
+// 从localStorage获取所有对话历史
+const fetchConversations = () => {
+  const savedConversations = localStorage.getItem('conversations')
+  conversations.value = savedConversations ? JSON.parse(savedConversations) : []
 }
 
 // 创建新对话
 const createNewConversation = async () => {
   try {
-    const response = await axiosInstance.post('/conversation')
-    currentConversationId.value = response.data.conversation_id
+    // 调用后端创建会话
+    const response = await fetch(`${API_BASE_URL}/conversation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) throw new Error('创建会话失败')
+    const data = await response.json()
+    
+    // 在本地保存会话信息
+    const newConversation = {
+      conversation_id: data.conversation_id,
+      title: '新对话',
+      created_at: new Date().toISOString()
+    }
+    conversations.value.unshift(newConversation)
+    currentConversationId.value = data.conversation_id
     messages.value = []
-    await fetchConversations()
+    localStorage.setItem('conversations', JSON.stringify(conversations.value))
+    localStorage.setItem(`messages_${data.conversation_id}`, JSON.stringify([]))
+    
+    return data.conversation_id
   } catch (error) {
     console.error('创建新对话失败:', error)
+    throw error
   }
 }
 
 // 获取特定对话的消息
-const fetchConversationMessages = async (conversationId) => {
-  try {
-    const response = await axiosInstance.get(`/conversation/${conversationId}/messages`)
-    messages.value = response.data
-  } catch (error) {
-    console.error('获取对话消息失败:', error)
-  }
+const fetchConversationMessages = (conversationId) => {
+  const savedMessages = localStorage.getItem(`messages_${conversationId}`)
+  messages.value = savedMessages ? JSON.parse(savedMessages) : []
 }
 
 // 发送消息
@@ -240,20 +257,22 @@ const sendMessage = async () => {
   const userMessage = inputMessage.value
   inputMessage.value = '' // 清空输入框
   
-  messages.value.push({
-    role: 'user',
-    content: userMessage
-  })
-  
-  isLoading.value = true // 开始加载
-  
   try {
     // 如果没有当前会话ID，先创建一个新会话
     if (!currentConversationId.value) {
-      const convResponse = await axiosInstance.post('/conversation')
-      currentConversationId.value = convResponse.data.conversation_id
+      await createNewConversation()
     }
-
+    
+    // 添加用户消息并保存到localStorage
+    const newMessages = [...messages.value, {
+      role: 'user',
+      content: userMessage
+    }]
+    messages.value = newMessages
+    localStorage.setItem(`messages_${currentConversationId.value}`, JSON.stringify(newMessages))
+    
+    isLoading.value = true
+    
     // 创建一个临时的助手消息用于显示流式响应
     messages.value.push({
       role: 'assistant',
@@ -298,53 +317,50 @@ const sendMessage = async () => {
         }
       }
     }
-
+    
+    // 保存完整对话到localStorage
+    localStorage.setItem(`messages_${currentConversationId.value}`, JSON.stringify(messages.value))
+    
+    // 更新会话标题（使用第一条用户消息作为标题）
+    if (messages.value.length === 2) {
+      const conversation = conversations.value.find(c => c.conversation_id === currentConversationId.value)
+      if (conversation) {
+        conversation.title = userMessage.slice(0, 20) + (userMessage.length > 20 ? '...' : '')
+        localStorage.setItem('conversations', JSON.stringify(conversations.value))
+      }
+    }
   } catch (error) {
     console.error('发送消息失败:', error)
     messages.value.push({
       role: 'assistant',
       content: '抱歉，发生了一些错误。请稍后重试。'
     })
+    localStorage.setItem(`messages_${currentConversationId.value}`, JSON.stringify(messages.value))
   } finally {
-    isLoading.value = false // 结束加载
+    isLoading.value = false
   }
 }
 
 // 删除对话
-const deleteConversation = async (conversationId) => {
-  try {
-    const response = await axiosInstance.delete(`/conversation/${conversationId}`)
-    if (response.data.status === 'success') {
-      await fetchConversations()
-      if (currentConversationId.value === conversationId) {
-        currentConversationId.value = null
-        messages.value = []
-      }
-    } else {
-      console.error('删除对话失败:', response.data)
-    }
-  } catch (error) {
-    console.error('删除对话失败:', error)
+const deleteConversation = (conversationId) => {
+  // 从本地存储中删除会话
+  conversations.value = conversations.value.filter(conv => conv.conversation_id !== conversationId)
+  localStorage.setItem('conversations', JSON.stringify(conversations.value))
+  localStorage.removeItem(`messages_${conversationId}`)
+  
+  if (currentConversationId.value === conversationId) {
+    currentConversationId.value = null
+    messages.value = []
   }
 }
 
 // 初始化
-onMounted(async () => {
-  try {
-    await fetchConversations()
-    if (!currentConversationId.value) {
-      if (conversations.value.length > 0) {
-        // 使用最新的对话
-        const latestConversation = conversations.value[0]
-        currentConversationId.value = latestConversation.conversation_id
-        await fetchConversationMessages(currentConversationId.value)
-      } else {
-        // 如果没有现有对话，创建一个新对话
-        await createNewConversation()
-      }
-    }
-  } catch (error) {
-    console.error('初始化失败:', error)
+onMounted(() => {
+  fetchConversations()
+  // 如果有对话历史，加载最新的对话
+  if (conversations.value.length > 0) {
+    currentConversationId.value = conversations.value[0].conversation_id
+    fetchConversationMessages(currentConversationId.value)
   }
 })
 </script>

@@ -1,0 +1,32 @@
+version: '3'
+services:
+  frontend:
+    build: .
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - macro-eco-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "8888:8888"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - macro-eco-network
+    volumes:
+      - ./backend:/app
+      - backend_data:/data
+
+networks:
+  macro-eco-network:
+    driver: bridge
+
+volumes:
+  backend_data:
