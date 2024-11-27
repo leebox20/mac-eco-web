@@ -3,18 +3,18 @@
     <TheHeader />
 
     <!-- Subheader -->
-    <div class="bg-[#4080ff] text-white py-6 px-4">
-      <div class="container mx-auto px-10 flex items-center space-x-2">
-        <arrow-down-wide-narrow class="h-5 w-5" />
+    <div class="bg-[#4080ff]  py-6 px-4 border-t border-gray-400 border-capacity-40">
+      <div class="container mx-auto px-10 flex items-center space-x-2 ">
+        <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
         <span class="text-sm text-gray-200">数据筛选</span>
       </div>
     </div>
 
     <!-- Main Content -->
     <main class="container mx-auto py-6 px-4">
-      <div class="bg-white rounded-lg p-6">
+      <div class="p-6">
         <!-- Tabs and Search -->
-        <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center justify-between mb-6 bg-white rounded-lg p-4 shadow">
           <div class="flex space-x-4">
             <button class="text-[#4080ff] font-medium border-b-2 border-[#4080ff] px-4 py-2">
               全部
@@ -85,9 +85,9 @@
         </div>
 
         <!-- Comparison Selection Panel -->
-        <div v-if="isComparisonMode" class="mb-6 p-4 border border-gray-200 rounded-lg">
+        <div v-if="isComparisonMode" class="mb-6 p-4 border border-dashed border-gray-200 rounded-lg">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-700">请为选择要进行对比的图表</h3>
+            <h3 class="text-lg font-medium text-gray-700 text-mute text-sm">请选择要进行对比的图表</h3>
             <button
               @click="closeComparisonMode"
               class="text-gray-500 hover:text-gray-700"
@@ -99,7 +99,7 @@
             <div
               v-for="item in selectedCharts"
               :key="item.id"
-              class="flex flex-col items-center bg-gray-100 p-3 rounded-lg relative"
+              class="flex flex-col items-center bg-white p-3 rounded-lg relative shadow"
             >
               <BarChartIcon class="h-8 w-8 text-green-500 mb-2" />
               <span class="text-sm text-gray-700 text-center">{{ item.title }}</span>
@@ -126,9 +126,9 @@
           <div 
             v-for="(chart, i) in charts" 
             :key="i" 
-            class="border border-gray-200 rounded-lg p-6"
+            class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg "
           >
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between bg-gray-50  p-3 rounded-lg ">
               <div class="flex items-center space-x-4">
                 <input
                   v-if="isComparisonMode"
@@ -138,14 +138,14 @@
                   @change="toggleChartSelection(chart)"
                   class="w-4 h-4 text-[#4080ff] rounded border-gray-300 focus:ring-[#4080ff]"
                 />
-                <h2 class="text-lg font-medium">{{ chart.title }}</h2>
+                <h2 class="text-sm">{{ chart.title }}</h2>
               </div>
-              <div class="text-gray-500 text-sm flex items-center space-x-4">
+              <div class="text-sm text-mute flex items-center space-x-4">
                 <span>来源：{{ chart.source }}</span>
                 <span>{{ chart.code }}</span>
               </div>
             </div>
-            <div class="h-80 w-full">
+            <div class="h-80 w-full border-t border-gray-200">
               <v-chart class="chart" :option="chart.option" autoresize />
             </div>
           </div>
