@@ -66,7 +66,7 @@
               <SearchIcon class="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
             </div>
             <button 
-              @click="toggleComparisonMode"
+              @click="handleComparisonClick"
               :class="[
                 'px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors',
                 isComparisonMode 
@@ -77,7 +77,6 @@
                   : ''
               ]"
               :disabled="isComparisonMode && selectedCharts.length < 2"
-              @click.prevent="handleComparisonClick"
             >
               <BarChartIcon class="h-5 w-5" />
               <span>{{ isLoading ? '对比中...' : '对比' }}</span>
@@ -336,14 +335,17 @@ async function handleComparisonClick() {
     return
   }
   
-  if (selectedCharts.value.length >= 2 && !isLoading.value) {
+  if (selectedCharts.value.length >= 2) {
     try {
       isLoading.value = true
+      console.log('Loading started')
       // 模拟 API 调用
       await new Promise(resolve => setTimeout(resolve, 3000))
+      console.log('API call completed')
     } catch (error) {
       console.error('对比失败:', error)
     } finally {
+      console.log('Loading finished')
       isLoading.value = false
       closeComparisonMode()
     }
