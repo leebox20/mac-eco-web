@@ -179,6 +179,7 @@ import {
   BarChartIcon,
   XIcon
 } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 
 use([
   CanvasRenderer,
@@ -339,14 +340,19 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isLoading.value = true
-      console.log('Loading started')
       // 模拟 API 调用
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      console.log('API call completed')
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // 跳转到分析结果页面,并传递选中的图表数据
+      router.push({
+        name: 'analysis-result',
+        query: {
+          charts: selectedCharts.value.map(chart => chart.id).join(',')
+        }
+      })
     } catch (error) {
       console.error('对比失败:', error)
     } finally {
-      console.log('Loading finished')
       isLoading.value = false
       closeComparisonMode()
     }
@@ -373,6 +379,8 @@ onMounted(() => {
 onUnmounted(() => {
   // Removed: document.removeEventListener('click', closeDropdowns)
 })
+
+const router = useRouter()
 </script>
 
 <style>

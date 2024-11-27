@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Login from '../views/Login.vue'
 import Database from '../views/Database/Index.vue'
+import AnalysisResult from '@/views/AnalysisResult.vue'
 
 const routes = [
   {
@@ -23,6 +24,11 @@ const routes = [
     path: '/database',
     name: 'Database',
     component: () => import('@/views/Database.vue')
+  },
+  {
+    path: '/analysis-result',
+    name: 'analysis-result',
+    component: AnalysisResult
   }
 ]
 
