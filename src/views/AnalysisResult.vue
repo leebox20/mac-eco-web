@@ -34,12 +34,7 @@
             <h2 class="text-sm text-left font-medium">结果分析</h2>
         </div>
         <div class="p-6 space-y-6 bg-white rounded-b-lg shadow text-left">
-          <div v-for="(section, index) in analysisContent" :key="index">
-            <h3 class="text-base font-medium mb-3">{{ section.title }}</h3>
-            <div class="text-gray-600 space-y-2">
-              <p v-for="(point, i) in section.points" :key="i">{{ point }}</p>
-            </div>
-          </div>
+          <div v-if="analysisContent" class="prose prose-sm max-w-none" v-html="renderMarkdown(analysisContent)"></div>
           <div v-if="isLoading" class="text-gray-600">分析中...</div>
         </div>
       </div>
@@ -72,6 +67,7 @@ import {
 
 import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
+import MarkdownIt from 'markdown-it'
 
 import { useRoute } from 'vue-router'
 import { API_BASE_URL } from '../config'
@@ -84,6 +80,23 @@ use([
   LegendComponent,
   TitleComponent
 ])
+
+// 初始化markdown解析器
+const md = new MarkdownIt({
+  html: true,
+  breaks: true,
+  linkify: true
+})
+
+// 自定义渲染规则，减少空行
+md.renderer.rules.paragraph_open = () => '<p class="mb-1">'
+md.renderer.rules.list_item_open = () => '<li class="mb-1">'
+
+// 解析markdown内容
+const renderMarkdown = (content) => {
+  if (!content) return ''
+  return md.render(content)
+}
 
 // 图表配置
 const chartOption = ref({
@@ -110,7 +123,7 @@ const chartOption = ref({
 })
 
 // 分析结果内容
-const analysisContent = ref([])
+const analysisContent = ref('')
 const isLoading = ref(false)
 const currentConversationId = ref(null)
 
@@ -140,10 +153,7 @@ const getAnalysis = async (chartData) => {
     // 检查是否所有数据都为空
     const hasValidData = recentData.some(item => item.value !== null)
     if (!hasValidData) {
-      analysisContent.value = [{
-        title: '数据无效',
-        points: ['当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。']
-      }]
+      analysisContent.value = '**数据无效**\n\n当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。'
       return
     }
     
@@ -211,15 +221,8 @@ const getAnalysis = async (chartData) => {
             const data = JSON.parse(line.slice(6))
             if (data.answer) {
               result += data.answer
-              // 实时解析并更新分析结果
-              const sections = result.split('#').filter(Boolean)
-              analysisContent.value = sections.map(section => {
-                const [title, ...points] = section.split('\n').filter(Boolean)
-                return {
-                  title: title.trim(),
-                  points: points.map(p => p.trim())
-                }
-              })
+              // 直接更新markdown内容
+              analysisContent.value = result
             }
           } catch (e) {
             console.error('解析响应数据失败:', e)
@@ -229,10 +232,7 @@ const getAnalysis = async (chartData) => {
     }
   } catch (error) {
     console.error('获取分析失败:', error)
-    analysisContent.value = [{
-      title: '分析失败',
-      points: ['抱歉，获取分析结果时发生错误，请稍后重试。']
-    }]
+    analysisContent.value = '**分析失败**\n\n抱歉，获取分析结果时发生错误，请稍后重试。'
   } finally {
     isLoading.value = false
   }
