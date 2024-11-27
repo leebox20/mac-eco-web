@@ -179,7 +179,6 @@ import {
   BarChartIcon,
   XIcon
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
 
 use([
   CanvasRenderer,
@@ -198,55 +197,144 @@ const activeDropdown = ref(null)
 const regions = ref(['北京', '上海', '四川', '云南', '湖北', '贵州'])
 
 // Sample charts data
-const charts = ref([
-  {
-    id: 1,
-    title: '中国金融机构:各项贷款余额:人民币:同比',
-    source: '中国人民银行',
-    code: 'M0001381',
-    option: generateChartOption()
-  },
-  {
-    id: 2,
-    title: '中国:金融机构:外汇贷款余额:同比',
-    source: '中国人民银行',
-    code: 'M0001382',
-    option: generateChartOption()
-  }
-])
+const charts = ref([])
 
 // Methods
-function generateChartOption() {
-  const { time, value } = generateData()
+async function loadCSVData() {
+  try {
+    const response = await fetch('/src/assets/DATALF-20241103 - DAY.csv')
+    const csvText = await response.text()
+    
+    // Split into rows and handle potential BOM character
+    const rows = csvText.replace(/^\ufeff/, '').split('\n')
+      .map(row => row.trim())
+      .filter(row => row.length > 0)
+      .map(row => {
+        // Use a more robust CSV parsing approach for Chinese characters
+        const cells = []
+        let cell = ''
+        let inQuotes = false
+        
+        for (let i = 0; i < row.length; i++) {
+          const char = row[i]
+          if (char === '"') {
+            inQuotes = !inQuotes
+          } else if (char === ',' && !inQuotes) {
+            cells.push(cell.trim())
+            cell = ''
+          } else {
+            cell += char
+          }
+        }
+        cells.push(cell.trim())
+        return cells
+      })
+
+    if (rows.length < 2) {
+      throw new Error('CSV 数据格式不正确：需要至少包含标题行和一行数据')
+    }
+
+    // 获取指标名称（第一行）
+    const indicators = rows[0].slice(1).filter(Boolean)
+    
+    // 获取时间序列数据
+    const timeData = []
+    const values = {}
+    
+    // 初始化每个指标的数据数组
+    indicators.forEach((_, index) => {
+      values[index] = []
+    })
+    
+    // 从第二行开始处理数据
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row[0]) continue // 跳过没有日期的行
+      
+      timeData.push(row[0])
+      
+      // 收集每个指标的值
+      for (let j = 1; j <= indicators.length; j++) {
+        let value = null
+        if (row[j]) {
+          // 处理数值，移除所有空格和特殊字符
+          const cleanValue = row[j].replace(/[^\d.-]/g, '')
+          value = cleanValue ? parseFloat(cleanValue) : null
+          if (isNaN(value)) value = null
+        }
+        if (values[j-1]) {
+          values[j-1].push(value)
+        }
+      }
+    }
+    
+    // 生成图表配置
+    charts.value = indicators.map((indicator, index) => {
+      if (!indicator || !values[index]) {
+        return null
+      }
+      
+      return {
+        id: index + 1,
+        title: indicator,
+        source: '数据来源：DATALF',
+        code: `indicator_${index + 1}`,
+        option: generateChartOption({
+          name: indicator,
+          unit: '',
+          time: timeData,
+          data: values[index]
+        })
+      }
+    }).filter(Boolean)
+
+    console.log('成功加载了', charts.value.length, '个图表')
+  } catch (error) {
+    console.error('加载CSV数据失败:', error)
+    alert('数据加载失败：' + error.message)
+  }
+}
+
+// 修改图表配置生成函数，优化空值的显示
+function generateChartOption({ name, unit, time, data }) {
   return {
     tooltip: {
       trigger: 'axis',
       formatter: function (params) {
-        const date = new Date(params[0].value[0] * 1000)
-        const year = date.getFullYear()
-        const month = date.getMonth() + 1
-        return year + '年' + month + '月: ' + params[0].value[1]
+        const value = params[0].value === null ? '暂无数据' : params[0].value
+        return `${params[0].axisValue}<br/>${value}`
+      }
+    },
+    title: {
+      text: name,
+      left: 'center',
+      top: 10,
+      textStyle: {
+        fontSize: 14
       }
     },
     xAxis: {
-      type: 'value',
-      min: 1990,
-      max: 1998,
+      type: 'category',
+      data: time,
       axisLabel: {
-        formatter: '{value}'
+        rotate: 45,
+        fontSize: 12
       }
     },
     yAxis: {
       type: 'value',
+      name: unit,
       axisLabel: {
         formatter: '{value}'
       }
     },
     series: [{
-      data: time.map((t, i) => [t, value[i]]),
+      name: name,
+      data: data,
       type: 'line',
       smooth: true,
       showSymbol: false,
+      connectNulls: true, // 连接空值点
       areaStyle: {
         opacity: 0.8,
         color: {
@@ -273,7 +361,8 @@ function generateChartOption() {
     grid: {
       left: '3%',
       right: '4%',
-      bottom: '3%',
+      bottom: '15%',
+      top: '15%',
       containLabel: true
     },
     dataZoom: [
@@ -281,22 +370,14 @@ function generateChartOption() {
         type: 'inside',
         start: 0,
         end: 100
+      },
+      {
+        type: 'slider',
+        start: 0,
+        end: 100
       }
     ]
   }
-}
-
-function generateData() {
-  const baseValue = Math.random() * 1000
-  const time = []
-  const value = []
-  for (let i = 0; i < 100; i++) {
-    const date = new Date(1990, 0, 1)
-    date.setDate(date.getDate() + i * 30)
-    time.push(date.getFullYear() + (date.getMonth() / 12))
-    value.push(Math.round((Math.sin(i / 5) * (i / 5 - 10) + i / 6) * 10 + baseValue))
-  }
-  return { time, value }
 }
 
 function toggleComparisonMode() {
@@ -369,6 +450,7 @@ const toggleDropdown = (dropdown) => {
 
 // Lifecycle
 onMounted(() => {
+  loadCSVData()
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.group')) {
       activeDropdown.value = null
@@ -379,8 +461,6 @@ onMounted(() => {
 onUnmounted(() => {
   // Removed: document.removeEventListener('click', closeDropdowns)
 })
-
-const router = useRouter()
 </script>
 
 <style>
