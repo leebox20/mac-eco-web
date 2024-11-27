@@ -185,7 +185,7 @@
                 <h2 class="text-sm">{{ chart.title }}</h2>
               </div>
               <div class="text-sm text-mute flex items-center space-x-4">
-                <span>来源：{{ chart.source }}</span>
+                <span>{{ chart.source }}</span>
                 <span>{{ chart.code }}</span>
               </div>
             </div>
@@ -685,6 +685,40 @@ function clearSearch() {
 
 // 图表配置生成函数
 function generateChartOption({ name, unit, time, data }) {
+  // Find valid data range
+  const validDataPoints = data.map((value, index) => ({ value, index }))
+    .filter(item => item.value !== null && item.value !== undefined && item.value !== '');
+  
+  if (validDataPoints.length === 0) {
+    return {
+      title: {
+        text: name,
+        left: 'center',
+        top: 'center',
+        textStyle: {
+          fontSize: 14
+        }
+      },
+      graphic: {
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        style: {
+          text: '暂无数据',
+          fontSize: 14,
+          fill: '#999'
+        }
+      }
+    };
+  }
+
+  const startIndex = validDataPoints[0].index;
+  const endIndex = validDataPoints[validDataPoints.length - 1].index;
+  
+  // Filter time and data arrays to only include the valid range
+  const filteredTime = time.slice(startIndex, endIndex + 1);
+  const filteredData = data.slice(startIndex, endIndex + 1);
+
   return {
     tooltip: {
       trigger: 'axis',
@@ -703,7 +737,7 @@ function generateChartOption({ name, unit, time, data }) {
     },
     xAxis: {
       type: 'category',
-      data: time,
+      data: filteredTime,
       axisLabel: {
         rotate: 45,
         fontSize: 12
@@ -718,7 +752,7 @@ function generateChartOption({ name, unit, time, data }) {
     },
     series: [{
       name: name,
-      data: data,
+      data: filteredData,
       type: 'line',
       smooth: true,
       showSymbol: false,
