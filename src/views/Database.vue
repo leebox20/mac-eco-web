@@ -4,28 +4,56 @@
 
 
     <!-- Subheader -->
-    <div class="bg-[#4080ff] text-white py-4">
-      <div class="container mx-auto px-4 flex items-center space-x-2">
-        <DatabaseIcon class="h-5 w-5" />
-        <span class="text-lg">数据筛选</span>
+    <div class="bg-[#4080ff] text-white py-6 px-4">
+      <div class="container mx-auto px-10 flex items-center space-x-2">
+        <arrow-down-wide-narrow class="h-5 w-5" />
+        <span class="text-sm text-gray-200">数据筛选</span>
       </div>
     </div>
 
-    <!-- Main Content -->
-    <main class="container mx-auto py-6 px-4">
+   <!-- Main Content -->
+   <main class="container mx-auto py-6 px-4">
       <div class="bg-white rounded-lg p-6">
         <!-- Tabs and Search -->
         <div class="flex items-center justify-between mb-6">
           <div class="flex space-x-4">
             <button class="text-[#4080ff] font-medium border-b-2 border-[#4080ff] px-4 py-2">全部</button>
-            <button class="text-gray-600 hover:text-[#4080ff] px-4 py-2 flex items-center">
-              区域
-              <ChevronDownIcon class="h-4 w-4 ml-1" />
-            </button>
-            <button class="text-gray-600 hover:text-[#4080ff] px-4 py-2 flex items-center">
-              政策
-              <ChevronDownIcon class="h-4 w-4 ml-1" />
-            </button>
+            <div class="relative group">
+              <button 
+                class="text-gray-600 hover:text-[#4080ff] px-4 py-2 flex items-center"
+                @click="toggleDropdown('region')"
+              >
+                区域
+                <ChevronDownIcon class="h-4 w-4 ml-1" />
+              </button>
+              <div 
+                v-if="activeDropdown === 'region'"
+                class="absolute z-10 mt-2 w-40 bg-white rounded-lg shadow-lg py-2 border border-gray-200"
+              >
+                <button 
+                  v-for="region in regions" 
+                  :key="region"
+                  class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-[#4080ff]"
+                >
+                  {{ region }}
+                </button>
+              </div>
+            </div>
+            <div class="relative group">
+              <button 
+                class="text-gray-600 hover:text-[#4080ff] px-4 py-2 flex items-center"
+                @click="toggleDropdown('policy')"
+              >
+                政策
+                <ChevronDownIcon class="h-4 w-4 ml-1" />
+              </button>
+              <div 
+                v-if="activeDropdown === 'policy'"
+                class="absolute z-10 mt-2 w-40 bg-white rounded-lg shadow-lg py-2 border border-gray-200"
+              >
+                <!-- Policy items would go here -->
+              </div>
+            </div>
           </div>
           <div class="flex items-center space-x-4">
             <div class="relative">
@@ -61,19 +89,18 @@
         </div>
       </div>
     </main>
-
     <TheFooter />
 
   </div>
 </template>
 
 <script setup>
-import TheHeader from '@/components/TheHeader.vue'
-import TheFooter from '@/components/TheFooter.vue'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
+import TheHeader from '@/components/TheHeader.vue'
+import TheFooter from '@/components/TheFooter.vue'
 import {
   GridComponent,
   TooltipComponent,
@@ -83,7 +110,7 @@ import {
 import VChart from 'vue-echarts'
 import { 
   HomeIcon, 
-  DatabaseIcon, 
+  ArrowDownWideNarrow, 
   UserIcon, 
   SearchIcon, 
   ChevronDownIcon,
@@ -180,6 +207,31 @@ const chartOption = ref({
       end: 100
     }
   ]
+})
+
+const activeDropdown = ref(null)
+const regions = ref(['北京', '上海', '四川', '云南', '湖北', '贵州'])
+
+const toggleDropdown = (dropdown) => {
+  if (activeDropdown.value === dropdown) {
+    activeDropdown.value = null
+  } else {
+    activeDropdown.value = dropdown
+  }
+}
+
+const closeDropdowns = (e) => {
+  if (!e.target.closest('.group')) {
+    activeDropdown.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeDropdowns)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeDropdowns)
 })
 </script>
 
