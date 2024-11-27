@@ -89,12 +89,7 @@ const chartOption = ref({
     trigger: 'axis'
   },
   legend: {
-    data: [
-      '中国:金融机构:各项贷款余额:人民币:同比',
-      '中国:金融机构:外汇贷款余额:同比',
-      '中国银行间债券市场回购加权平均利率:当月值',
-      '中国人民银行对金融机构贷款利率:超额准备金'
-    ]
+    data: []
   },
   grid: {
     left: '3%',
@@ -104,19 +99,12 @@ const chartOption = ref({
   },
   xAxis: {
     type: 'category',
-    data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    data: []
   },
   yAxis: {
     type: 'value'
   },
-  series: [
-    {
-      name: '中国:金融机构:各项贷款余额:人民币:同比',
-      type: 'line',
-      data: [150, 200, 180, 200, 220, 250, 230]
-    },
-    // ... 其他数据系列
-  ]
+  series: []
 })
 
 // 分析内容
@@ -145,16 +133,89 @@ const chartIds = computed(() => {
   return ids ? ids.split(',') : []
 })
 
-// 根据 chartIds 获取对应的图表数据
-onMounted(async () => {
-  if (chartIds.value.length) {
-    // 这里可以根据 chartIds 从 API 获取图表数据
-    // 暂时使用模拟数据
-    const data = chartIds.value.map(id => ({
-      id,
-      // ... 其他图表数据
+// 从缓存中获取图表数据
+const loadChartData = () => {
+  const cachedData = localStorage.getItem('selectedChartsData')
+  if (cachedData) {
+    try {
+      return JSON.parse(cachedData)
+    } catch (e) {
+      console.error('Failed to parse cached chart data:', e)
+    }
+  }
+  return null
+}
+
+// 更新图表配置
+const updateChartOption = (selectedCharts) => {
+  const chartData = loadChartData()
+  if (!chartData) {
+    console.error('No chart data found in cache')
+    return
+  }
+
+  const selectedData = chartData.filter(chart => selectedCharts.includes(String(chart.id)))
+  if (!selectedData.length) {
+    console.error('No matching chart data found for selected IDs')
+    return
+  }
+
+  // 更新图表配置
+  chartOption.value = {
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params) {
+        let result = params[0].axisValue + '<br/>'
+        params.forEach(param => {
+          result += param.marker + ' ' + param.seriesName + ': ' + param.value + '<br/>'
+        })
+        return result
+      }
+    },
+    legend: {
+      data: selectedData.map(d => d.name),
+      type: 'scroll',
+      orient: 'horizontal',
+      bottom: 0
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '10%',
+      top: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: selectedData[0].time,
+      axisLabel: {
+        rotate: 45,
+        interval: Math.floor(selectedData[0].time.length / 10)
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: '{value}'
+      }
+    },
+    series: selectedData.map(d => ({
+      name: d.name,
+      type: 'line',
+      data: d.data,
+      smooth: true,
+      showSymbol: false,
+      emphasis: {
+        focus: 'series'
+      }
     }))
-    // 更新图表数据
+  }
+}
+
+// 根据 chartIds 获取对应的图表数据
+onMounted(() => {
+  if (chartIds.value.length) {
+    updateChartOption(chartIds.value)
   }
 })
 </script>
@@ -164,4 +225,4 @@ onMounted(async () => {
   height: 100%;
   width: 100%;
 }
-</style> 
+</style>

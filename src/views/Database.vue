@@ -628,6 +628,14 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isLoading.value = true
+      // 只保存必要的图表数据
+      const chartsData = selectedCharts.value.map(chart => ({
+        id: chart.id,
+        name: chart.title,
+        time: chart.option.xAxis.data,
+        data: chart.option.series[0].data
+      }))
+      localStorage.setItem('selectedChartsData', JSON.stringify(chartsData))
       router.push({
         name: 'analysis-result',
         query: {
