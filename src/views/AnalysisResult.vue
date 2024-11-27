@@ -40,6 +40,7 @@
               <p v-for="(point, i) in section.points" :key="i">{{ point }}</p>
             </div>
           </div>
+          <div v-if="isLoading" class="text-gray-600">分析中...</div>
         </div>
       </div>
     </main>
@@ -73,6 +74,7 @@ import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
 
 import { useRoute } from 'vue-router'
+import { API_BASE_URL } from '../config'
 
 use([
   CanvasRenderer,
@@ -107,25 +109,134 @@ const chartOption = ref({
   series: []
 })
 
-// 分析内容
-const analysisContent = ref([
-  {
-    title: '1. 市场规模与增长',
-    points: [
-      '2020年：新能源行业整体市场规模较小，尽管增长显著，但基数较低。',
-      '• 太阳能 和 风能 是增长的主要领域。',
-      '• 储能技术仍处于研发阶段，市场普及率较低。',
-      '2023年：行业市场规模快速扩张，增速达两位数。'
-    ]
-  },
-  {
-    title: '2. 政策与资金支持',
-    points: [
-      '2020年：政策驱动力强，但多以补贴、减税等方式为主，推动行业初步发展。',
-      '• 例如，中国出台了对光伏产业的"领跑者计划"，推动技术升级。'
-    ]
+// 分析结果内容
+const analysisContent = ref([])
+const isLoading = ref(false)
+const currentConversationId = ref(null)
+
+// 发送数据到后端API获取分析
+const getAnalysis = async (chartData) => {
+  try {
+    isLoading.value = true
+    
+    console.log('原始图表数据:', chartData)
+    
+    // 验证数据是否有效
+    if (!chartData.data || !chartData.time || !chartData.data.length || !chartData.time.length) {
+      throw new Error('图表数据无效')
+    }
+
+    // 获取最近30条数据
+    const startIndex = Math.max(0, chartData.data.length - 30)
+    const recentData = chartData.time.slice(startIndex).map((time, index) => {
+      const dataIndex = startIndex + index
+      const value = chartData.data[dataIndex]
+      return {
+        date: time,
+        value: typeof value === 'number' ? value.toFixed(4) : null
+      }
+    })
+    
+    // 检查是否所有数据都为空
+    const hasValidData = recentData.some(item => item.value !== null)
+    if (!hasValidData) {
+      analysisContent.value = [{
+        title: '数据无效',
+        points: ['当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。']
+      }]
+      return
+    }
+    
+    console.log('处理后的数据:', recentData)
+    
+    // 构建prompt
+    const prompt = `你是一名专业的经济分析师。现在，我将提供一个名为【${chartData.name}】的经济数据，该数据集涵盖了从【${recentData[0].date}】至【${recentData[recentData.length-1].date}】的${recentData.length}条数据。在分析这些数据时，你需要重点关注数据的来源、分类、可靠性和时效性。
+以下是你将遵循的分析步骤：
+#趋势和变化分析：
+首先识别数据中的主要趋势和周期性变化。
+#原因和影响因素探究：
+探讨可能影响数据变化的经济、政治和社会因素。
+分析这些因素如何与数据变化相关联，并尝试建立因果关系。
+#综合经济指标分析：
+结合其他相关经济指标，以获得更全面的视角。
+评估这些指标如何相互影响，并共同作用于提供的数据。
+#为了确保分析的时效性和准确性，请使用百度搜索插件来获取最新的经济资讯和数据。确保这些资讯与分析报告的关联性，并在报告中注明来源。引用习近平总书记或政府官方部门在相关领域的最新论述和政策指导。这些论述将作为分析报告的重要论据，以增强报告的权威性和深度。
+以下是具体的数据内容：【${JSON.stringify(recentData)}】`
+
+    // 创建新会话
+    const convResponse = await fetch(`${API_BASE_URL}/conversation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!convResponse.ok) {
+      throw new Error('创建会话失败')
+    }
+    
+    const convData = await convResponse.json()
+    currentConversationId.value = convData.conversation_id
+
+    // 发送流式请求
+    const response = await fetch(`${API_BASE_URL}/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        conversation_id: currentConversationId.value,
+        query: prompt
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error('分析请求失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let result = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value)
+      // 处理 SSE 格式的数据
+      const lines = chunk.split('\n')
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.answer) {
+              result += data.answer
+              // 实时解析并更新分析结果
+              const sections = result.split('#').filter(Boolean)
+              analysisContent.value = sections.map(section => {
+                const [title, ...points] = section.split('\n').filter(Boolean)
+                return {
+                  title: title.trim(),
+                  points: points.map(p => p.trim())
+                }
+              })
+            }
+          } catch (e) {
+            console.error('解析响应数据失败:', e)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('获取分析失败:', error)
+    analysisContent.value = [{
+      title: '分析失败',
+      points: ['抱歉，获取分析结果时发生错误，请稍后重试。']
+    }]
+  } finally {
+    isLoading.value = false
   }
-])
+}
 
 const route = useRoute()
 const chartIds = computed(() => {
@@ -195,7 +306,7 @@ const loadChartData = (chartIds) => {
 }
 
 // 更新图表配置
-const updateChartOption = (selectedCharts) => {
+const updateChartOption = async (selectedCharts) => {
   const chartData = loadChartData(selectedCharts)
   if (!chartData || !chartData.length) {
     console.error('No chart data found in cache')
@@ -251,6 +362,11 @@ const updateChartOption = (selectedCharts) => {
         focus: 'series'
       }
     }))
+  }
+
+  // 在图表数据加载完成后获取分析
+  if (chartData.length > 0) {
+    await getAnalysis(chartData[0])
   }
 }
 
