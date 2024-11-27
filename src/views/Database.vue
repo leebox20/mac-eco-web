@@ -63,11 +63,18 @@
                 type="text"
                 placeholder="搜索"
                 @keyup.enter="handleSearch"
-                class="pl-10 pr-8 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4080ff]"
+                :disabled="isLoading || isSearching"
+                class="pl-10 pr-8 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4080ff] disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
-              <SearchIcon class="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+              <div class="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <SearchIcon v-if="!isSearching" class="h-5 w-5 text-gray-400" />
+                <svg v-else class="animate-spin h-5 w-5 text-[#4080ff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
               <button 
-                v-if="searchQuery"
+                v-if="searchQuery && !isSearching"
                 @click="clearSearch"
                 class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
@@ -76,8 +83,10 @@
             </div>
             <button 
               @click="handleComparisonClick"
+              :disabled="isLoading || isSearching || (isComparisonMode && selectedCharts.length < 2)"
               :class="[
                 'px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors',
+                (isLoading || isSearching) ? 'bg-gray-400 text-white cursor-not-allowed' :
                 isComparisonMode 
                   ? 'bg-gray-400 text-white cursor-not-allowed' 
                   : 'bg-[#4080ff] text-white hover:bg-[#3070ff]',
@@ -85,7 +94,6 @@
                   ? '!bg-[#4080ff] !cursor-pointer'
                   : ''
               ]"
-              :disabled="isComparisonMode && selectedCharts.length < 2"
             >
               <BarChartIcon class="h-5 w-5" />
               <span>{{ isLoading ? '对比中...' : '对比' }}</span>
@@ -93,40 +101,14 @@
           </div>
         </div>
 
-        <!-- Comparison Selection Panel -->
-        <div v-if="isComparisonMode" class="mb-6 p-4 border border-dashed border-gray-200 rounded-lg">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-medium text-gray-700 text-mute text-sm">请选择要进行对比的图表</h3>
-            <button
-              @click="closeComparisonMode"
-              class="text-gray-500 hover:text-gray-700"
-            >
-              <XIcon class="h-5 w-5" />
-            </button>
-          </div>
-          <div class="flex flex-wrap gap-3">
-            <div
-              v-for="item in selectedCharts"
-              :key="item.id"
-              class="flex flex-col items-center bg-white p-3 rounded-lg relative shadow"
-            >
-              <BarChartIcon class="h-8 w-8 text-green-500 mb-2" />
-              <span class="text-sm text-gray-700 text-center">{{ item.title }}</span>
-              <button
-                @click="removeFromComparison(item)"
-                class="absolute top-1 right-1 text-gray-400 hover:text-gray-600"
-              >
-                <XIcon class="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- Loading State -->
-        <div v-if="isLoading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div class="bg-white rounded-lg p-6 flex flex-col items-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4080ff] mb-4"></div>
-            <span class="text-gray-700">对比分析中...</span>
+        <div v-if="isLoading" class="bg-white rounded-lg p-8 text-center">
+          <div class="flex flex-col items-center justify-center space-y-4">
+            <svg class="animate-spin h-10 w-10 text-[#4080ff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-gray-600">正在加载数据...</p>
           </div>
         </div>
 
@@ -259,6 +241,7 @@ use([
 const isComparisonMode = ref(false)
 const selectedCharts = ref([])
 const isLoading = ref(false)
+const isSearching = ref(false)
 const activeDropdown = ref(null)
 const regions = ref(['北京', '上海', '四川', '云南', '湖北', '贵州'])
 const charts = ref([])
@@ -411,10 +394,13 @@ function clearCache() {
 
 // Methods
 async function loadCSVData() {
+  isLoading.value = true
   try {
+    // 尝试从缓存加载
     const cachedData = loadFromCache()
     if (cachedData) {
       const { indicators, timeData, values } = cachedData
+      // 生成图表配置
       charts.value = indicators.map((indicator, index) => {
         if (!indicator || !values[index]) {
           return null
@@ -522,6 +508,8 @@ async function loadCSVData() {
   } catch (error) {
     console.error('加载CSV数据失败:', error)
     alert('数据加载失败：' + error.message)
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -606,20 +594,28 @@ const toggleDropdown = (dropdown) => {
 }
 
 // 搜索相关
-function handleSearch() {
+async function handleSearch() {
   if (!searchQuery.value.trim()) {
     clearSearch()
     return
   }
   
-  const query = searchQuery.value.toLowerCase()
-  searchResults.value = charts.value.filter(chart => 
-    chart.title.toLowerCase().includes(query) ||
-    chart.code.toLowerCase().includes(query)
-  )
-  
-  // 重置到第一页
-  currentPage.value = 1
+  isSearching.value = true
+  try {
+    const query = searchQuery.value.toLowerCase()
+    // 模拟搜索延迟
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    searchResults.value = charts.value.filter(chart => 
+      chart.title.toLowerCase().includes(query) ||
+      chart.code.toLowerCase().includes(query)
+    )
+    
+    // 重置到第一页
+    currentPage.value = 1
+  } finally {
+    isSearching.value = false
+  }
 }
 
 function clearSearch() {
