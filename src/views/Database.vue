@@ -59,11 +59,20 @@
           <div class="flex items-center space-x-4">
             <div class="relative">
               <input
+                v-model="searchQuery"
                 type="text"
                 placeholder="搜索"
-                class="pl-10 pr-4 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4080ff]"
+                @keyup.enter="handleSearch"
+                class="pl-10 pr-8 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4080ff]"
               />
               <SearchIcon class="h-5 w-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+              <button 
+                v-if="searchQuery"
+                @click="clearSearch"
+                class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <XIcon class="h-4 w-4" />
+              </button>
             </div>
             <button 
               @click="handleComparisonClick"
@@ -124,7 +133,7 @@
         <!-- Chart Section -->
         <div v-else class="space-y-6" ref="containerRef">
           <div 
-            v-for="(chart, i) in visibleCharts" 
+            v-for="(chart, i) in displayedCharts" 
             :key="chart.id" 
             class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg"
           >
@@ -256,9 +265,18 @@ const charts = ref([])
 const pageSize = 10
 const currentPage = ref(1)
 const totalCharts = ref(0)
+const searchQuery = ref('')
+const searchResults = ref(null)
+const containerRef = ref(null)
 
 // 分页相关计算属性
-const totalPages = computed(() => Math.ceil(totalCharts.value / pageSize))
+const totalPages = computed(() => {
+  const total = searchResults.value 
+    ? searchResults.value.length 
+    : totalCharts.value
+  return Math.ceil(total / pageSize)
+})
+
 const displayedPages = computed(() => {
   const pages = []
   const maxVisiblePages = 7
@@ -293,17 +311,10 @@ const displayedPages = computed(() => {
 
 // 虚拟列表相关
 const displayedCharts = computed(() => {
+  const data = searchResults.value || charts.value
   const start = (currentPage.value - 1) * pageSize
   const end = start + pageSize
-  return charts.value.slice(start, end)
-})
-
-const containerRef = ref(null)
-const itemHeight = 400
-const visibleCount = computed(() => Math.ceil(window.innerHeight / itemHeight))
-const startIndex = ref(0)
-const visibleCharts = computed(() => {
-  return displayedCharts.value
+  return data.slice(start, end)
 })
 
 // 缓存相关函数
@@ -316,13 +327,20 @@ function saveToCache(rawData) {
       timeData
     }))
     
-    const chunkSize = 10
+    // 将数值数据分块存储，减小每块的大小
+    const chunkSize = 5 // 减小到每块5个指标
     for (let i = 0; i < indicators.length; i += chunkSize) {
       const chunk = {}
       for (let j = i; j < Math.min(i + chunkSize, indicators.length); j++) {
-        chunk[j] = values[j]
+        // 只存储必要的数据，移除null值
+        chunk[j] = values[j].filter(v => v !== null)
       }
-      localStorage.setItem(`chartValues_${i}`, JSON.stringify(chunk))
+      try {
+        localStorage.setItem(`chartValues_${i}`, JSON.stringify(chunk))
+      } catch (e) {
+        console.warn(`无法存储数据块 ${i}, 跳过缓存`)
+        return false
+      }
     }
     return true
   } catch (error) {
@@ -344,7 +362,7 @@ function loadFromCache() {
     }
     
     const values = {}
-    for (let i = 0; i < indicators.length; i += 10) {
+    for (let i = 0; i < indicators.length; i += 5) { // 使用相同的块大小
       const chunk = localStorage.getItem(`chartValues_${i}`)
       if (!chunk) {
         clearCache()
@@ -352,6 +370,21 @@ function loadFromCache() {
       }
       Object.assign(values, JSON.parse(chunk))
     }
+    
+    // 恢复完整的数据数组，包括null值
+    indicators.forEach((_, index) => {
+      if (values[index]) {
+        const fullData = new Array(timeData.length).fill(null)
+        let valueIndex = 0
+        for (let i = 0; i < timeData.length && valueIndex < values[index].length; i++) {
+          if (values[index][valueIndex] !== null) {
+            fullData[i] = values[index][valueIndex]
+            valueIndex++
+          }
+        }
+        values[index] = fullData
+      }
+    })
     
     return { indicators, timeData, values }
   } catch (error) {
@@ -366,7 +399,7 @@ function clearCache() {
     const metadata = localStorage.getItem('chartMetadata')
     if (metadata) {
       const { indicators } = JSON.parse(metadata)
-      for (let i = 0; i < indicators.length; i += 10) {
+      for (let i = 0; i < indicators.length; i += 5) {
         localStorage.removeItem(`chartValues_${i}`)
       }
     }
@@ -496,7 +529,7 @@ async function loadCSVData() {
 function updateVisibleArea() {
   if (!containerRef.value) return
   const scrollTop = containerRef.value.scrollTop
-  startIndex.value = Math.floor(scrollTop / itemHeight)
+  // startIndex.value = Math.floor(scrollTop / itemHeight)
 }
 
 // 加载更多数据
@@ -549,12 +582,12 @@ async function handleComparisonClick() {
       isLoading.value = true
       await new Promise(resolve => setTimeout(resolve, 2000))
       
-      router.push({
-        name: 'analysis-result',
-        query: {
-          charts: selectedCharts.value.map(chart => chart.id).join(',')
-        }
-      })
+      // router.push({
+      //   name: 'analysis-result',
+      //   query: {
+      //     charts: selectedCharts.value.map(chart => chart.id).join(',')
+      //   }
+      // })
     } catch (error) {
       console.error('对比失败:', error)
     } finally {
@@ -570,6 +603,29 @@ const toggleDropdown = (dropdown) => {
   } else {
     activeDropdown.value = dropdown
   }
+}
+
+// 搜索相关
+function handleSearch() {
+  if (!searchQuery.value.trim()) {
+    clearSearch()
+    return
+  }
+  
+  const query = searchQuery.value.toLowerCase()
+  searchResults.value = charts.value.filter(chart => 
+    chart.title.toLowerCase().includes(query) ||
+    chart.code.toLowerCase().includes(query)
+  )
+  
+  // 重置到第一页
+  currentPage.value = 1
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchResults.value = null
+  currentPage.value = 1
 }
 
 // 图表配置生成函数
@@ -665,10 +721,6 @@ onMounted(() => {
       activeDropdown.value = null
     }
   })
-  
-  if (containerRef.value) {
-    containerRef.value.addEventListener('scroll', updateVisibleArea)
-  }
 })
 
 onUnmounted(() => {
@@ -677,9 +729,6 @@ onUnmounted(() => {
       activeDropdown.value = null
     }
   })
-  if (containerRef.value) {
-    containerRef.value.removeEventListener('scroll', updateVisibleArea)
-  }
 })
 </script>
 
