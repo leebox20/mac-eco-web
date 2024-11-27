@@ -122,18 +122,18 @@
         </div>
 
         <!-- Chart Section -->
-        <div v-else class="space-y-6">
+        <div v-else class="space-y-6" ref="containerRef">
           <div 
-            v-for="(chart, i) in charts" 
-            :key="i" 
-            class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg "
+            v-for="(chart, i) in visibleCharts" 
+            :key="chart.id" 
+            class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg"
           >
             <div class="flex items-center justify-between bg-gray-50  p-3 rounded-lg ">
               <div class="flex items-center space-x-4">
                 <input
                   v-if="isComparisonMode"
                   type="checkbox"
-                  :id="'chart-' + i"
+                  :id="'chart-' + chart.id"
                   :checked="isChartSelected(chart)"
                   @change="toggleChartSelection(chart)"
                   class="w-4 h-4 text-[#4080ff] rounded border-gray-300 focus:ring-[#4080ff]"
@@ -147,6 +147,63 @@
             </div>
             <div class="h-80 w-full border-t border-gray-200">
               <v-chart class="chart" :option="chart.option" autoresize />
+            </div>
+          </div>
+
+          <!-- Pagination -->
+          <div class="flex justify-between items-center bg-white p-4 rounded-lg shadow mt-6">
+            <div class="text-sm text-gray-700">
+              显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, totalCharts) }} 条，共 {{ totalCharts }} 条
+            </div>
+            <div class="flex items-center space-x-2">
+              <button 
+                @click="currentPage = Math.max(1, currentPage - 1)"
+                :disabled="currentPage === 1"
+                :class="[
+                  'px-3 py-1 rounded-lg',
+                  currentPage === 1 
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                ]"
+              >
+                上一页
+              </button>
+              
+              <div class="flex space-x-1">
+                <template v-for="page in displayedPages" :key="page">
+                  <button
+                    v-if="page !== '...'"
+                    @click="currentPage = page"
+                    :class="[
+                      'w-8 h-8 rounded-lg',
+                      currentPage === page
+                        ? 'bg-[#4080ff] text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    ]"
+                  >
+                    {{ page }}
+                  </button>
+                  <span 
+                    v-else 
+                    class="w-8 h-8 flex items-center justify-center text-gray-400"
+                  >
+                    ...
+                  </span>
+                </template>
+              </div>
+
+              <button 
+                @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                :disabled="currentPage === totalPages"
+                :class="[
+                  'px-3 py-1 rounded-lg',
+                  currentPage === totalPages
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                ]"
+              >
+                下一页
+              </button>
             </div>
           </div>
         </div>
@@ -195,22 +252,166 @@ const selectedCharts = ref([])
 const isLoading = ref(false)
 const activeDropdown = ref(null)
 const regions = ref(['北京', '上海', '四川', '云南', '湖北', '贵州'])
-
-// Sample charts data
 const charts = ref([])
+const pageSize = 10
+const currentPage = ref(1)
+const totalCharts = ref(0)
+
+// 分页相关计算属性
+const totalPages = computed(() => Math.ceil(totalCharts.value / pageSize))
+const displayedPages = computed(() => {
+  const pages = []
+  const maxVisiblePages = 7
+  
+  if (totalPages.value <= maxVisiblePages) {
+    for (let i = 1; i <= totalPages.value; i++) {
+      pages.push(i)
+    }
+  } else {
+    pages.push(1)
+    
+    if (currentPage.value > 3) {
+      pages.push('...')
+    }
+    
+    const start = Math.max(2, currentPage.value - 1)
+    const end = Math.min(totalPages.value - 1, currentPage.value + 1)
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    
+    if (currentPage.value < totalPages.value - 2) {
+      pages.push('...')
+    }
+    
+    pages.push(totalPages.value)
+  }
+  
+  return pages
+})
+
+// 虚拟列表相关
+const displayedCharts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  const end = start + pageSize
+  return charts.value.slice(start, end)
+})
+
+const containerRef = ref(null)
+const itemHeight = 400
+const visibleCount = computed(() => Math.ceil(window.innerHeight / itemHeight))
+const startIndex = ref(0)
+const visibleCharts = computed(() => {
+  return displayedCharts.value
+})
+
+// 缓存相关函数
+function saveToCache(rawData) {
+  try {
+    const { indicators, timeData, values } = rawData
+    localStorage.setItem('chartMetadata', JSON.stringify({
+      timestamp: Date.now(),
+      indicators,
+      timeData
+    }))
+    
+    const chunkSize = 10
+    for (let i = 0; i < indicators.length; i += chunkSize) {
+      const chunk = {}
+      for (let j = i; j < Math.min(i + chunkSize, indicators.length); j++) {
+        chunk[j] = values[j]
+      }
+      localStorage.setItem(`chartValues_${i}`, JSON.stringify(chunk))
+    }
+    return true
+  } catch (error) {
+    console.warn('缓存存储失败:', error)
+    clearCache()
+    return false
+  }
+}
+
+function loadFromCache() {
+  try {
+    const metadata = localStorage.getItem('chartMetadata')
+    if (!metadata) return null
+    
+    const { timestamp, indicators, timeData } = JSON.parse(metadata)
+    if (Date.now() - timestamp > 3600000) {
+      clearCache()
+      return null
+    }
+    
+    const values = {}
+    for (let i = 0; i < indicators.length; i += 10) {
+      const chunk = localStorage.getItem(`chartValues_${i}`)
+      if (!chunk) {
+        clearCache()
+        return null
+      }
+      Object.assign(values, JSON.parse(chunk))
+    }
+    
+    return { indicators, timeData, values }
+  } catch (error) {
+    console.warn('缓存加载失败:', error)
+    clearCache()
+    return null
+  }
+}
+
+function clearCache() {
+  try {
+    const metadata = localStorage.getItem('chartMetadata')
+    if (metadata) {
+      const { indicators } = JSON.parse(metadata)
+      for (let i = 0; i < indicators.length; i += 10) {
+        localStorage.removeItem(`chartValues_${i}`)
+      }
+    }
+    localStorage.removeItem('chartMetadata')
+  } catch (error) {
+    console.warn('缓存清理失败:', error)
+  }
+}
 
 // Methods
 async function loadCSVData() {
   try {
+    const cachedData = loadFromCache()
+    if (cachedData) {
+      const { indicators, timeData, values } = cachedData
+      charts.value = indicators.map((indicator, index) => {
+        if (!indicator || !values[index]) {
+          return null
+        }
+        
+        return {
+          id: index + 1,
+          title: indicator,
+          source: '数据来源：DATALF',
+          code: `indicator_${index + 1}`,
+          option: generateChartOption({
+            name: indicator,
+            unit: '',
+            time: timeData,
+            data: values[index]
+          })
+        }
+      }).filter(Boolean)
+      
+      totalCharts.value = charts.value.length
+      return
+    }
+
     const response = await fetch('/src/assets/DATALF-20241103 - DAY.csv')
     const csvText = await response.text()
     
-    // Split into rows and handle potential BOM character
     const rows = csvText.replace(/^\ufeff/, '').split('\n')
       .map(row => row.trim())
       .filter(row => row.length > 0)
       .map(row => {
-        // Use a more robust CSV parsing approach for Chinese characters
         const cells = []
         let cell = ''
         let inQuotes = false
@@ -234,30 +435,24 @@ async function loadCSVData() {
       throw new Error('CSV 数据格式不正确：需要至少包含标题行和一行数据')
     }
 
-    // 获取指标名称（第一行）
     const indicators = rows[0].slice(1).filter(Boolean)
     
-    // 获取时间序列数据
     const timeData = []
     const values = {}
     
-    // 初始化每个指标的数据数组
     indicators.forEach((_, index) => {
       values[index] = []
     })
     
-    // 从第二行开始处理数据
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i]
-      if (!row[0]) continue // 跳过没有日期的行
+      if (!row[0]) continue
       
       timeData.push(row[0])
       
-      // 收集每个指标的值
       for (let j = 1; j <= indicators.length; j++) {
         let value = null
         if (row[j]) {
-          // 处理数值，移除所有空格和特殊字符
           const cleanValue = row[j].replace(/[^\d.-]/g, '')
           value = cleanValue ? parseFloat(cleanValue) : null
           if (isNaN(value)) value = null
@@ -267,8 +462,9 @@ async function loadCSVData() {
         }
       }
     }
+
+    saveToCache({ indicators, timeData, values })
     
-    // 生成图表配置
     charts.value = indicators.map((indicator, index) => {
       if (!indicator || !values[index]) {
         return null
@@ -288,6 +484,7 @@ async function loadCSVData() {
       }
     }).filter(Boolean)
 
+    totalCharts.value = charts.value.length
     console.log('成功加载了', charts.value.length, '个图表')
   } catch (error) {
     console.error('加载CSV数据失败:', error)
@@ -295,7 +492,87 @@ async function loadCSVData() {
   }
 }
 
-// 修改图表配置生成函数，优化空值的显示
+// 监听滚动更新可视区域
+function updateVisibleArea() {
+  if (!containerRef.value) return
+  const scrollTop = containerRef.value.scrollTop
+  startIndex.value = Math.floor(scrollTop / itemHeight)
+}
+
+// 加载更多数据
+function loadMore() {
+  if (currentPage.value * pageSize < totalCharts.value) {
+    currentPage.value++
+  }
+}
+
+function toggleComparisonMode() {
+  isComparisonMode.value = !isComparisonMode.value
+  if (!isComparisonMode.value) {
+    selectedCharts.value = []
+  }
+}
+
+function closeComparisonMode() {
+  isComparisonMode.value = false
+  selectedCharts.value = []
+}
+
+function toggleChartSelection(chart) {
+  const index = selectedCharts.value.findIndex(c => c.id === chart.id)
+  if (index === -1) {
+    selectedCharts.value.push(chart)
+  } else {
+    selectedCharts.value.splice(index, 1)
+  }
+}
+
+function isChartSelected(chart) {
+  return selectedCharts.value.some(c => c.id === chart.id)
+}
+
+function removeFromComparison(chart) {
+  const index = selectedCharts.value.findIndex(c => c.id === chart.id)
+  if (index !== -1) {
+    selectedCharts.value.splice(index, 1)
+  }
+}
+
+async function handleComparisonClick() {
+  if (!isComparisonMode.value) {
+    toggleComparisonMode()
+    return
+  }
+  
+  if (selectedCharts.value.length >= 2) {
+    try {
+      isLoading.value = true
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      router.push({
+        name: 'analysis-result',
+        query: {
+          charts: selectedCharts.value.map(chart => chart.id).join(',')
+        }
+      })
+    } catch (error) {
+      console.error('对比失败:', error)
+    } finally {
+      isLoading.value = false
+      closeComparisonMode()
+    }
+  }
+}
+
+const toggleDropdown = (dropdown) => {
+  if (activeDropdown.value === dropdown) {
+    activeDropdown.value = null
+  } else {
+    activeDropdown.value = dropdown
+  }
+}
+
+// 图表配置生成函数
 function generateChartOption({ name, unit, time, data }) {
   return {
     tooltip: {
@@ -334,7 +611,7 @@ function generateChartOption({ name, unit, time, data }) {
       type: 'line',
       smooth: true,
       showSymbol: false,
-      connectNulls: true, // 连接空值点
+      connectNulls: true,
       areaStyle: {
         opacity: 0.8,
         color: {
@@ -380,74 +657,6 @@ function generateChartOption({ name, unit, time, data }) {
   }
 }
 
-function toggleComparisonMode() {
-  isComparisonMode.value = !isComparisonMode.value
-  if (!isComparisonMode.value) {
-    selectedCharts.value = []
-  }
-}
-
-function closeComparisonMode() {
-  isComparisonMode.value = false
-  selectedCharts.value = []
-}
-
-function toggleChartSelection(chart) {
-  const index = selectedCharts.value.findIndex(c => c.id === chart.id)
-  if (index === -1) {
-    selectedCharts.value.push(chart)
-  } else {
-    selectedCharts.value.splice(index, 1)
-  }
-}
-
-function isChartSelected(chart) {
-  return selectedCharts.value.some(c => c.id === chart.id)
-}
-
-function removeFromComparison(chart) {
-  const index = selectedCharts.value.findIndex(c => c.id === chart.id)
-  if (index !== -1) {
-    selectedCharts.value.splice(index, 1)
-  }
-}
-
-async function handleComparisonClick() {
-  if (!isComparisonMode.value) {
-    toggleComparisonMode()
-    return
-  }
-  
-  if (selectedCharts.value.length >= 2) {
-    try {
-      isLoading.value = true
-      // 模拟 API 调用
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // 跳转到分析结果页面,并传递选中的图表数据
-      router.push({
-        name: 'analysis-result',
-        query: {
-          charts: selectedCharts.value.map(chart => chart.id).join(',')
-        }
-      })
-    } catch (error) {
-      console.error('对比失败:', error)
-    } finally {
-      isLoading.value = false
-      closeComparisonMode()
-    }
-  }
-}
-
-const toggleDropdown = (dropdown) => {
-  if (activeDropdown.value === dropdown) {
-    activeDropdown.value = null
-  } else {
-    activeDropdown.value = dropdown
-  }
-}
-
 // Lifecycle
 onMounted(() => {
   loadCSVData()
@@ -456,10 +665,21 @@ onMounted(() => {
       activeDropdown.value = null
     }
   })
+  
+  if (containerRef.value) {
+    containerRef.value.addEventListener('scroll', updateVisibleArea)
+  }
 })
 
 onUnmounted(() => {
-  // Removed: document.removeEventListener('click', closeDropdowns)
+  document.removeEventListener('click', (e) => {
+    if (!e.target.closest('.group')) {
+      activeDropdown.value = null
+    }
+  })
+  if (containerRef.value) {
+    containerRef.value.removeEventListener('scroll', updateVisibleArea)
+  }
 })
 </script>
 
