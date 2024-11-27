@@ -101,6 +101,44 @@
           </div>
         </div>
 
+                <!-- Comparison Selection Panel -->
+                <div v-if="isComparisonMode" class="mb-6 p-4 border border-gray-200 rounded-lg">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-700">请为选择要进行对比的图表</h3>
+            <button
+              @click="closeComparisonMode"
+              class="text-gray-500 hover:text-gray-700"
+            >
+              <XIcon class="h-5 w-5" />
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-3">
+            <div
+              v-for="item in selectedCharts"
+              :key="item.id"
+              class="flex flex-col items-center bg-gray-100 p-3 rounded-lg relative"
+            >
+              <BarChartIcon class="h-8 w-8 text-green-500 mb-2" />
+              <span class="text-sm text-gray-700 text-center">{{ item.title }}</span>
+              <button
+                @click="removeFromComparison(item)"
+                class="absolute top-1 right-1 text-gray-400 hover:text-gray-600"
+              >
+                <XIcon class="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+                <!-- Loading State -->
+        <div v-if="isLoading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div class="bg-white rounded-lg p-6 flex flex-col items-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4080ff] mb-4"></div>
+            <span class="text-gray-700">对比分析中...</span>
+          </div>
+        </div>
+
+
         <!-- Chart Section -->
         <div class="space-y-6" ref="containerRef">
           <!-- Loading State -->
@@ -225,6 +263,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -246,6 +285,8 @@ import {
   BarChartIcon,
   XIcon
 } from 'lucide-vue-next'
+
+const router = useRouter()
 
 use([
   CanvasRenderer,
@@ -587,14 +628,12 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isLoading.value = true
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      // router.push({
-      //   name: 'analysis-result',
-      //   query: {
-      //     charts: selectedCharts.value.map(chart => chart.id).join(',')
-      //   }
-      // })
+      router.push({
+        name: 'analysis-result',
+        query: {
+          charts: selectedCharts.value.map(chart => chart.id).join(',')
+        }
+      })
     } catch (error) {
       console.error('对比失败:', error)
     } finally {
@@ -623,7 +662,7 @@ async function handleSearch() {
   try {
     const query = searchQuery.value.toLowerCase()
     // 模拟搜索延迟
-    await new Promise(resolve => setTimeout(resolve, 300))
+    // await new Promise(resolve => setTimeout(resolve, 300))
     
     searchResults.value = charts.value.filter(chart => 
       chart.title.toLowerCase().includes(query) ||
