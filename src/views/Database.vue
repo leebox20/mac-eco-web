@@ -101,102 +101,121 @@
           </div>
         </div>
 
-        <!-- Loading State -->
-        <div v-if="isLoading" class="bg-white rounded-lg p-8 text-center">
-          <div class="flex flex-col items-center justify-center space-y-4">
-            <svg class="animate-spin h-10 w-10 text-[#4080ff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p class="text-gray-600">正在加载数据...</p>
-          </div>
-        </div>
-
         <!-- Chart Section -->
-        <div v-else class="space-y-6" ref="containerRef">
-          <div 
-            v-for="(chart, i) in displayedCharts" 
-            :key="chart.id" 
-            class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg"
-          >
-            <div class="flex items-center justify-between bg-gray-50  p-3 rounded-lg ">
-              <div class="flex items-center space-x-4">
-                <input
-                  v-if="isComparisonMode"
-                  type="checkbox"
-                  :id="'chart-' + chart.id"
-                  :checked="isChartSelected(chart)"
-                  @change="toggleChartSelection(chart)"
-                  class="w-4 h-4 text-[#4080ff] rounded border-gray-300 focus:ring-[#4080ff]"
-                />
-                <h2 class="text-sm">{{ chart.title }}</h2>
-              </div>
-              <div class="text-sm text-mute flex items-center space-x-4">
-                <span>来源：{{ chart.source }}</span>
-                <span>{{ chart.code }}</span>
-              </div>
-            </div>
-            <div class="h-80 w-full border-t border-gray-200">
-              <v-chart class="chart" :option="chart.option" autoresize />
+        <div class="space-y-6" ref="containerRef">
+          <!-- Loading State -->
+          <div v-if="isLoading" class="bg-white rounded-lg p-8 shadow">
+            <div class="flex flex-col items-center justify-center space-y-4">
+              <svg class="animate-spin h-10 w-10 text-[#4080ff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p class="text-gray-600">正在加载数据...</p>
             </div>
           </div>
 
-          <!-- Pagination -->
-          <div class="flex justify-between items-center bg-white p-4 rounded-lg shadow mt-6">
-            <div class="text-sm text-gray-700">
-              显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, totalCharts) }} 条，共 {{ totalCharts }} 条
-            </div>
-            <div class="flex items-center space-x-2">
-              <button 
-                @click="currentPage = Math.max(1, currentPage - 1)"
-                :disabled="currentPage === 1"
-                :class="[
-                  'px-3 py-1 rounded-lg',
-                  currentPage === 1 
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                ]"
-              >
-                上一页
-              </button>
-              
-              <div class="flex space-x-1">
-                <template v-for="page in displayedPages" :key="page">
-                  <button
-                    v-if="page !== '...'"
-                    @click="currentPage = page"
-                    :class="[
-                      'w-8 h-8 rounded-lg',
-                      currentPage === page
-                        ? 'bg-[#4080ff] text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                    ]"
-                  >
-                    {{ page }}
-                  </button>
-                  <span 
-                    v-else 
-                    class="w-8 h-8 flex items-center justify-center text-gray-400"
-                  >
-                    ...
-                  </span>
-                </template>
+          <!-- No Results Message -->
+          <div v-else-if="searchResults && searchResults.length === 0" class="bg-white rounded-lg p-8 shadow">
+            <div class="flex flex-col items-center justify-center space-y-4">
+              <div class="rounded-full bg-gray-100 p-3">
+                <SearchIcon class="h-8 w-8 text-gray-400" />
               </div>
-
+              <p class="text-gray-600">未找到匹配的结果</p>
               <button 
-                @click="currentPage = Math.min(totalPages, currentPage + 1)"
-                :disabled="currentPage === totalPages"
-                :class="[
-                  'px-3 py-1 rounded-lg',
-                  currentPage === totalPages
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
-                ]"
+                @click="clearSearch"
+                class="text-[#4080ff] hover:text-[#3070ff] font-medium"
               >
-                下一页
+                返回全部图表
               </button>
             </div>
           </div>
+
+          <!-- Charts -->
+          <template v-else>
+            <div 
+              v-for="(chart, i) in displayedCharts" 
+              :key="chart.id" 
+              class="bg-white shadow rounded-lg border-t border-gray-200 rounded-lg"
+            >
+              <div class="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                <div class="flex items-center space-x-4">
+                  <input
+                    v-if="isComparisonMode"
+                    type="checkbox"
+                    :id="'chart-' + chart.id"
+                    :checked="isChartSelected(chart)"
+                    @change="toggleChartSelection(chart)"
+                    class="w-4 h-4 text-[#4080ff] rounded border-gray-300 focus:ring-[#4080ff]"
+                  />
+                  <h2 class="text-sm">{{ chart.title }}</h2>
+                </div>
+                <div class="text-sm text-mute flex items-center space-x-4">
+                  <span>来源：{{ chart.source }}</span>
+                  <span>{{ chart.code }}</span>
+                </div>
+              </div>
+              <div class="h-80 w-full border-t border-gray-200">
+                <v-chart class="chart" :option="chart.option" autoresize />
+              </div>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="flex justify-between items-center bg-white p-4 rounded-lg shadow mt-6">
+              <div class="text-sm text-gray-700">
+                显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, totalCharts) }} 条，共 {{ totalCharts }} 条
+              </div>
+              <div class="flex items-center space-x-2">
+                <button 
+                  @click="currentPage = Math.max(1, currentPage - 1)"
+                  :disabled="currentPage === 1"
+                  :class="[
+                    'px-3 py-1 rounded-lg',
+                    currentPage === 1 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  ]"
+                >
+                  上一页
+                </button>
+                
+                <div class="flex space-x-1">
+                  <template v-for="page in displayedPages" :key="page">
+                    <button
+                      v-if="page !== '...'"
+                      @click="currentPage = page"
+                      :class="[
+                        'w-8 h-8 rounded-lg',
+                        currentPage === page
+                          ? 'bg-[#4080ff] text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      ]"
+                    >
+                      {{ page }}
+                    </button>
+                    <span 
+                      v-else 
+                      class="w-8 h-8 flex items-center justify-center text-gray-400"
+                    >
+                      ...
+                    </span>
+                  </template>
+                </div>
+
+                <button 
+                  @click="currentPage = Math.min(totalPages, currentPage + 1)"
+                  :disabled="currentPage === totalPages"
+                  :class="[
+                    'px-3 py-1 rounded-lg',
+                    currentPage === totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  ]"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </main>
