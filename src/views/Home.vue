@@ -6,73 +6,80 @@
     <!-- 主要内容 -->
     <main class="main-bg min-h-screen relative overflow-hidden mb-12">
       <!-- 地图背景 -->
-      <div class="absolute right-0 top-0 w-1/2 h-full pointer-events-none" style="z-index: 1;">
-        <img src="@/assets/map/img_0.png" alt="" class="w-full h-full object-contain opacity-50">
-      </div>
+      <Transition name="slide-from-right" appear>
+        <div class="absolute right-0 top-0 w-1/2 h-full pointer-events-none" style="z-index: 1;">
+          <img src="@/assets/home-map.png" alt="" class="w-full h-full object-contain">
+        </div>
+      </Transition>
       
       <!-- 内容区域 -->
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative pt-24" style="z-index: 2;">
         <div class="max-w-3xl">
           <!-- 欢迎区域 -->
-          <div class="mb-16 text-left">
-            <h1 class="text-2xl font-medium text-gray-900 leading-tight">
-              欢迎使用<span class="text-primary">中国宏观经济大数据AI预测系统</span>！
-            </h1>
-            <p class="mt-8 text-base text-gray-600 leading-7">
-              我们致力于为用户提供专业、高效的宏观经济趋势分析服务。通过强大的大数据处理能力，我们能够轻松找到特定年份某个行业的经济趋势，并与其他年份进行精准对比，从而帮助您清晰了解行业发展的脉络与变化。
-            </p>
-            <p class="mt-6 text-base text-gray-600 leading-7">
-              不仅如此，基于对历史数据的深入分析和先进的预测算法，我们可以对未来的经济形势进行科学预测，为您的战略决策提供可靠依据，无论是投资、市场研究，还是政策制定，我们都能助您一臂之力。
-            </p>
-          </div>
+          <Transition name="fade-up" appear>
+            <div class="mb-16 text-left">
+              <h1 class="text-2xl font-medium text-gray-900 leading-tight">
+                欢迎使用<span class="text-primary">中国宏观经济大数据AI预测系统</span>！
+              </h1>
+              <p class="mt-8 text-base text-gray-600 leading-7">
+                我们致力于为用户提供专业、高效的宏观经济趋势分析服务。通过强大的大数据处理能力，我们能够轻松找到特定年份某个行业的经济趋势，并与其他年份进行精准对比，从而帮助您清晰了解行业发展的脉络与变化。
+              </p>
+              <p class="mt-6 text-base text-gray-600 leading-7">
+                不仅如此，基于对历史数据的深入分析和先进的预测算法，我们可以对未来的经济形势进行科学预测，为您的战略决策提供可靠依据，无论是投资、市场研究，还是政策制定，我们都能助您一臂之力。
+              </p>
+            </div>
+          </Transition>
 
           <!-- Economic Indicators -->
-          <div class="mb-16">
-            <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测：</h3>
-            <div class="grid grid-cols-3 gap-6">
-              <div v-for="(indicator, index) in economicIndicators" 
+          <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '300ms' }">
+            <div class="mb-16">
+              <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测：</h3>
+              <div class="grid grid-cols-3 gap-6">
+                <div v-for="(indicator, index) in economicIndicators" 
                   :key="index"
                   class="bg-white rounded-lg p-4 shadow-sm">
-                <div class="text-sm text-gray-600">{{ indicator.label }}</div>
-                <div class="mt-2 h-12 flex items-center justify-center">
-                  <div class="number-container flex items-center justify-center">
-                    <transition name="scroll" mode="out-in">
-                      <div :key="scrollTrigger" class="flex items-center justify-center">
-                        <CountTo
-                          :startVal="0"
-                          :endVal="parseFloat(indicator.value)"
-                          :duration="2000"
-                          :decimals="1"
-                          @finished="triggerScroll"
-                          class="text-[#4080FF] text-3xl font-medium"
-                        />
-                        <span class="ml-1 text-gray-600 text-xl">%</span>
-                      </div>
-                    </transition>
+                  <div class="text-sm text-gray-600">{{ indicator.label }}</div>
+                  <div class="mt-2 h-12 flex items-center justify-center">
+                    <div class="number-container flex items-center justify-center">
+                      <transition name="scroll" mode="out-in">
+                        <div :key="scrollTrigger" class="flex items-center justify-center">
+                          <CountTo
+                            :startVal="0"
+                            :endVal="parseFloat(indicator.value)"
+                            :duration="2000"
+                            :decimals="1"
+                            @finished="triggerScroll"
+                            class="text-[#4080FF] text-3xl font-medium"
+                          />
+                          <span class="ml-1 text-gray-600 text-xl">%</span>
+                        </div>
+                      </transition>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-
-
+          </Transition>
 
           <!-- Feature Section -->
-          <h2 class="text-lg font-medium text-gray-900 mb-6 text-left">便捷功能入口</h2>
-          <div class="grid grid-cols-2 gap-6">
-            <div v-for="(feature, index) in features" 
+          <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '600ms' }">
+            <div>
+              <h2 class="text-lg font-medium text-gray-900 mb-6 text-left">便捷功能入口</h2>
+              <div class="grid grid-cols-2 gap-6">
+                <div v-for="(feature, index) in features" 
                  :key="index"
                  class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
-              <div class="w-full bg-gradient-to-br from-blue-50 to-white ">
-                <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain  rounded-t-lg" />
-              </div>
-              <div class="px-6 py-4">
-                <h3 class="text-base font-medium text-gray-900 mb-1">{{ feature.title }}</h3>
-                <p class="text-gray-600 text-sm">{{ feature.description }}</p>
+                  <div class="w-full bg-gradient-to-br from-blue-50 to-white ">
+                    <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain  rounded-t-lg" />
+                  </div>
+                  <div class="px-6 py-4">
+                    <h3 class="text-base font-medium text-gray-900 mb-1">{{ feature.title }}</h3>
+                    <p class="text-gray-600 text-sm">{{ feature.description }}</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-
+          </Transition>
         </div>
       </div>
     </main>
@@ -181,5 +188,38 @@ onMounted(() => {
 .custom-italic {
   font-style: italic;
   transform: skew(-15deg);
+}
+
+/* 从右侧滑入动画 */
+.slide-from-right-enter-active,
+.slide-from-right-leave-active {
+  transition: all 0.8s ease;
+}
+
+.slide-from-right-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.slide-from-right-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+/* 从下方淡入动画 */
+.fade-up-enter-active,
+.fade-up-leave-active {
+  transition: all 0.5s ease;
+  transition-delay: var(--delay, 0ms);
+}
+
+.fade-up-enter-from {
+  transform: translateY(30px);
+  opacity: 0;
+}
+
+.fade-up-leave-to {
+  transform: translateY(-30px);
+  opacity: 0;
 }
 </style>
