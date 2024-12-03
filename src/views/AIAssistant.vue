@@ -7,7 +7,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-8">
         <!-- 左侧历史消息栏 -->
         <div class="w-80 bg-white rounded-lg shadow">
-          <h2 class="font-medium text-lg mb-4 bg-gray-50 p-3 text-left">历史消息</h2>
+          <h2 class="font-medium text-lg mb-4 bg-gray-50 p-3 text-left border-b border-t border-gray-200 rounded-t-lg">历史消息</h2>
           <div class="space-y-2 px-2">
             <!-- 新会话按钮 -->
             <div 
@@ -56,9 +56,9 @@
 
         <!-- 右侧主要对话区域 -->
         <div class="flex-1">
-          <div class="bg-white rounded-lg shadow-sm p-6 flex flex-col h-[calc(100vh-8rem)]">
+          <div class="bg-white rounded-lg shadow flex flex-col h-[calc(100vh-8rem)]">
             <!-- 标题区域 -->
-            <div class="flex items-center mb-8">
+            <div class="flex items-center mb-8 bg-gray-50 p-3 rounded-t-lg border-b border-t border-gray-200">
               <img src="@/assets/logo.svg" alt="logo" class="h-12 w-12 mr-3">
               <div>
                 <h1 class="text-xl font-medium text-gray-900 text-left">社科数智</h1>
@@ -67,7 +67,7 @@
             </div>
 
             <!-- 对话区域 -->
-            <div class="flex-1 overflow-y-auto mb-6 space-y-6">
+            <div class="flex-1 overflow-y-auto mb-6 space-y-6 p-6">
               <template v-if="messages.length > 0">
                 <div v-for="(message, index) in messages" :key="index" class="flex items-start space-x-3" :class="{ 'justify-end': message.role === 'user' }">
                   
@@ -142,7 +142,7 @@
             </div>
 
             <!-- 输入区域 -->
-            <div class="border-t pt-4">
+            <div class="border-t p-6">
               <div class="relative">
                 <textarea
                   v-model="inputMessage"
