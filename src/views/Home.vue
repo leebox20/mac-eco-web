@@ -71,17 +71,19 @@
             <div>
               <h2 class="text-lg font-medium text-gray-900 mb-6 text-left">便捷功能入口</h2>
               <div class="grid grid-cols-2 gap-6">
-                <div v-for="(feature, index) in features" 
-                 :key="index"
-                 class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                <router-link 
+                  v-for="(feature, index) in features" 
+                  :key="index"
+                  :to="feature.route"
+                  class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   <div class="w-full bg-gradient-to-br from-blue-50 to-white ">
-                    <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain  rounded-t-lg" />
+                    <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain rounded-t-lg" />
                   </div>
                   <div class="px-6 py-4">
                     <h3 class="text-base font-medium text-gray-900 mb-1">{{ feature.title }}</h3>
                     <p class="text-gray-600 text-sm">{{ feature.description }}</p>
                   </div>
-                </div>
+                </router-link>
               </div>
             </div>
           </Transition>
@@ -113,12 +115,14 @@ const features = [
   {
     title: 'AI智能预测',
     description: '基于先进算法，快速从海量数据中找到关键信息，提供高可信度的未来经济形势预测。',
-    icon: aiPredictionIcon
+    icon: aiPredictionIcon,
+    route: '/ai-assistant'
   },
   {
     title: '横向数据对比',
     description: '从海量数据库轻松锁定不同行业和年份的经济趋势进行对比，数据至简，结果直观。',
-    icon: dataComparisonIcon
+    icon: dataComparisonIcon,
+    route: '/database'
   }
 ]
 
