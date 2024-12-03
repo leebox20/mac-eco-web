@@ -29,6 +29,11 @@ const routes = [
     path: '/analysis-result',
     name: 'analysis-result',
     component: () => import('@/views/AnalysisResult.vue')
+  },
+  {
+    path: '/prediction',
+    name: 'Prediction',
+    component: () => import('@/views/Prediction.vue')
   }
 ]
 

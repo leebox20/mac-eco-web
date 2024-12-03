@@ -1,10 +1,10 @@
 <template>
-  <nav class="nav-bg">
+  <nav :style="headerStyle" class="nav-base">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 shadow">
       <div class="flex justify-between h-20">
         <div class="flex items-center">
           <div class="flex-shrink-0 flex items-center">
-            <img src="@/assets/logo.png" alt="Logo" class="h-20">
+            <img :src="logoImg" alt="Logo" class="h-20">
           </div>
         </div>
 
@@ -32,7 +32,7 @@
                 'opacity-60 hover:text-white hover:opacity-100': $route.path !== '/login' 
               }"
             >
-              <img src="/src/assets/menu-login.png" alt="" class="w-4 h-4">
+              <img :src="menuLoginImg" alt="" class="w-4 h-4">
             </router-link>
           </router-link>
         </div>
@@ -42,25 +42,47 @@
 </template>
 
 <script setup>
+import logoImg from '../assets/logo.png'
+import menuHomeImg from '../assets/menu-home.png'
+import menuRobotImg from '../assets/menu-robot.png'
+import menuChartImg from '../assets/menu-chart.png'
+import menuUserImg from '../assets/menu-user.png'
+import menuLoginImg from '../assets/menu-login.png'
+import headerBgImg from '../assets/home-header-bg.png'
+import { computed } from 'vue'
+
+const headerStyle = computed(() => ({
+  backgroundColor: '#348fef',
+  backgroundImage: `url(${headerBgImg})`,
+  backgroundSize: 'contain',
+  backgroundPosition: 'left center',
+  backgroundRepeat: 'no-repeat'
+}))
+
 const menuItems = [
   {
     path: '/',
-    icon: '/src/assets/menu-home.png',
+    icon: menuHomeImg,
     label: '首页'
   },
   {
     path: '/ai-assistant',
-    icon: '/src/assets/menu-robot.png',
+    icon: menuRobotImg,
     label: 'AI智能助手'
   },
   {
     path: '/database',
-    icon: '/src/assets/menu-chart.png',
+    icon: menuChartImg,
     label: '数据库'
   },
   {
+    path: '/prediction',
+    icon: menuChartImg,
+    label: '宏观预测'
+  },
+  {
     path: '/login',
-    icon: '/src/assets/menu-user.png',
+    icon: menuUserImg,
     label: '社科小智',
     hasLoginArrow: true
   }
@@ -68,12 +90,8 @@ const menuItems = [
 </script>
 
 <style scoped>
-.nav-bg {
-  background-color: #348fef;
-  background-image: url('/src/assets/home-header-bg.png');
-  background-size: contain;
-  background-position: left center;
-  background-repeat: no-repeat;
+.nav-base {
+  /* 移除背景相关样式，现在通过 style 绑定来设置 */
 }
 /* 移除之前的router-link-active样式，现在使用动态class控制 */
 </style> 

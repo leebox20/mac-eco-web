@@ -3,7 +3,7 @@
     <!-- 主体内容 -->
     <div class="flex-1 flex">
       <!-- 左侧背景 -->
-      <div class="hidden lg:block lg:w-7/12 relative bg-gradient-to-br from-blue-100 to-blue-500">
+      <div class="hidden lg:block lg:w-7/12 relative bg-[url('@/assets/login-bg.png')] bg-cover bg-center">
         <!-- 系统名称 -->
         <div class="absolute top-8 left-8">
           <div class="flex items-center gap-2">
@@ -15,12 +15,6 @@
           </div>
         </div>
         
-        <!-- 装饰性圆形渐变 -->
-        <div class="absolute inset-0 overflow-hidden">
-          <div class="absolute w-[800px] h-[800px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-            <div class="w-full h-full bg-gradient-to-r from-blue-300 to-blue-500 rounded-full opacity-30"></div>
-          </div>
-        </div>
       </div>
 
       <!-- 右侧登录表单 -->
@@ -77,7 +71,7 @@
 
     <!-- 页脚 -->
     <div class="py-4 text-center text-gray-500 text-sm">
-      Copyright © 2011 — {{ new Date().getFullYear() }} China Macroeconomic Big Data AI Forecasting System. All rights reserved.
+      Copyright  2011 — {{ new Date().getFullYear() }} China Macroeconomic Big Data AI Forecasting System. All rights reserved.
     </div>
   </div>
 </template>
