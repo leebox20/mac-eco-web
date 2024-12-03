@@ -9,6 +9,11 @@
       <Transition name="slide-from-right" appear>
         <div class="absolute right-0 top-0 w-1/2 h-full pointer-events-none" style="z-index: 1;">
           <img src="@/assets/home-map.png" alt="" class="w-full h-full object-contain">
+          <div class="ripple-container">
+            <div class="ripple"></div>
+            <div class="ripple"></div>
+            <div class="ripple"></div>
+          </div>
         </div>
       </Transition>
       
@@ -221,5 +226,50 @@ onMounted(() => {
 .fade-up-leave-to {
   transform: translateY(-30px);
   opacity: 0;
+}
+
+/* 波纹动画样式 */
+.ripple-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1000px;
+  height: 600px;
+  transform-origin: center;
+  transform: translate(-50%, -50%) rotate(-15deg);
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 60px;
+  border: 3px solid rgba(64, 128, 255, 0.25);
+  border-radius: 50%;
+  animation: ripple 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.ripple:nth-child(2) {
+  animation-delay: 1.3s;
+}
+
+.ripple:nth-child(3) {
+  animation-delay: 2.6s;
+}
+
+@keyframes ripple {
+  0% {
+    width: 100px;
+    height: 60px;
+    opacity: 1;
+  }
+  100% {
+    width: 1000px;
+    height: 600px;
+    opacity: 0;
+  }
 }
 </style>
