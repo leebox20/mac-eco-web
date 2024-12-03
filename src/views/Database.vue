@@ -484,22 +484,36 @@ async function loadCSVData() {
     }
 
     console.log('开始从服务器加载 CSV 文件...')
-    const csvUrl = `/assets/DATALF-20241103 - DAY.csv`
+    const csvUrl = `${import.meta.env.BASE_URL}assets/DATALF-20241103 - DAY.csv`
     console.log('CSV 文件 URL:', csvUrl)
-    
-    const response = await fetch(csvUrl)
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+
+    // 获取文件大小
+    const fileSize = await getFileSize(csvUrl)
+    console.log('CSV 文件大小:', fileSize, 'bytes')
+
+    // 将文件分成5个块
+    const chunkSize = Math.ceil(fileSize / 5)
+    const chunks = []
+
+    // 并行下载所有块
+    const promises = []
+    for (let start = 0; start < fileSize; start += chunkSize) {
+      const end = Math.min(start + chunkSize - 1, fileSize - 1)
+      promises.push(fetchChunk(csvUrl, start, end))
     }
-    console.log('CSV 文件加载成功，开始解析...')
-    
-    const csvText = await response.text()
+
+    console.log('开始并行下载分片...')
+    const chunkResults = await Promise.all(promises)
+    console.log('所有分片下载完成')
+
+    // 合并所有块
+    const csvText = chunkResults.join('')
     console.log('CSV 文本长度:', csvText.length)
     
     if (!csvText || csvText.length === 0) {
       throw new Error('CSV 文件为空')
     }
-    
+
     const rows = csvText.replace(/^\ufeff/, '').split('\n')
       .map(row => row.trim())
       .filter(row => row.length > 0)
@@ -584,6 +598,23 @@ async function loadCSVData() {
   } finally {
     isInitialLoading.value = false
   }
+}
+
+// 分片下载相关函数
+async function fetchChunk(url, start, end) {
+  const response = await fetch(url, {
+    headers: {
+      Range: `bytes=${start}-${end}`
+    }
+  })
+  return response.text()
+}
+
+async function getFileSize(url) {
+  const response = await fetch(url, {
+    method: 'HEAD'
+  })
+  return parseInt(response.headers.get('content-length'))
 }
 
 // 监听滚动更新可视区域
