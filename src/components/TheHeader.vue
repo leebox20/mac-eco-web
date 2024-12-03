@@ -1,14 +1,10 @@
 <template>
-  <nav class="bg-primary ">
+  <nav class="nav-bg">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 shadow">
       <div class="flex justify-between h-20">
         <div class="flex items-center">
           <div class="flex-shrink-0 flex items-center">
-            <img src="@/assets/logo.svg" alt="Logo" class="h-10 custom-italic">
-            <div class="ml-2 text-left">
-              <div class="text-white text-lg custom-italic">中国宏观经济大数据AI预测系统</div>
-              <div class="text-white text-sm opacity-75">China Macroeconomic Big Data AI Forecasting System</div>
-            </div>
+            <img src="@/assets/logo.png" alt="Logo" class="h-20">
           </div>
         </div>
 
@@ -23,7 +19,7 @@
               'opacity-60 hover:text-white hover:opacity-100': $route.path !== item.path
             }"
           >
-            <i :class="[item.icon, 'mr-2']"></i>
+            <img :src="item.icon" alt="" class="w-5 h-5 mr-2">
             {{ item.label }}
             
             <!-- 登录箭头 -->
@@ -36,7 +32,7 @@
                 'opacity-60 hover:text-white hover:opacity-100': $route.path !== '/login' 
               }"
             >
-              <i class="fas fa-arrow-right"></i>
+              <img src="/src/assets/menu-login.png" alt="" class="w-4 h-4">
             </router-link>
           </router-link>
         </div>
@@ -49,22 +45,22 @@
 const menuItems = [
   {
     path: '/',
-    icon: 'fas fa-home',
+    icon: '/src/assets/menu-home.png',
     label: '首页'
   },
   {
     path: '/ai-assistant',
-    icon: 'fas fa-robot',
+    icon: '/src/assets/menu-robot.png',
     label: 'AI智能助手'
   },
   {
     path: '/database',
-    icon: 'fas fa-database',
+    icon: '/src/assets/menu-chart.png',
     label: '数据库'
   },
   {
     path: '/login',
-    icon: 'fas fa-brain',
+    icon: '/src/assets/menu-user.png',
     label: '社科小智',
     hasLoginArrow: true
   }
@@ -72,5 +68,12 @@ const menuItems = [
 </script>
 
 <style scoped>
+.nav-bg {
+  background-color: #348fef;
+  background-image: url('/src/assets/home-header-bg.png');
+  background-size: contain;
+  background-position: left center;
+  background-repeat: no-repeat;
+}
 /* 移除之前的router-link-active样式，现在使用动态class控制 */
 </style> 

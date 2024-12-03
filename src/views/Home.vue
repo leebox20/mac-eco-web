@@ -1,17 +1,17 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-[#f2f5f8]">
     <!-- 使用组件 -->
     <TheHeader />
     
     <!-- 主要内容 -->
-    <main class="bg-background min-h-screen relative overflow-hidden pt-12 pb-12">
+    <main class="main-bg min-h-screen relative overflow-hidden mb-12">
       <!-- 地图背景 -->
       <div class="absolute right-0 top-0 w-1/2 h-full pointer-events-none" style="z-index: 1;">
         <img src="@/assets/map/img_0.png" alt="" class="w-full h-full object-contain opacity-50">
       </div>
       
       <!-- 内容区域 -->
-      <div class="max-w-7xl mx-auto pt-16 px-4 sm:px-6 lg:px-8 relative" style="z-index: 2;">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative pt-24" style="z-index: 2;">
         <div class="max-w-3xl">
           <!-- 欢迎区域 -->
           <div class="mb-16 text-left">
@@ -26,64 +26,53 @@
             </p>
           </div>
 
-          <!-- 数据统计 -->
-          <div class="grid grid-cols-3 gap-6 mb-16">
-            <div class="bg-white rounded-lg p-6 shadow">
-              <div class="text-[#666666] text-sm">今日已生成</div>
-              <div class="mt-2">
-                <span class="text-[32px] font-medium text-[#4080FF]">8323</span>
-                <span class="text-base text-[#666666] ml-2">字</span>
-              </div>
-            </div>
-            <div class="bg-white rounded-lg p-6 shadow">
-              <div class="text-[#666666] text-sm">数据库已收录</div>
-              <div class="mt-2">
-                <span class="text-[32px] font-medium text-[#4080FF]">12353</span>
-                <span class="text-base text-[#666666] ml-2">条</span>
-              </div>
-            </div>
-            <div class="bg-white rounded-lg p-6 shadow">
-              <div class="text-[#666666] text-sm">已使用该系统</div>
-              <div class="mt-2">
-                <span class="text-[32px] font-medium text-[#4080FF]">79</span>
-                <span class="text-base text-[#666666] ml-2">天</span>
+          <!-- Economic Indicators -->
+          <div class="mb-16">
+            <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测：</h3>
+            <div class="grid grid-cols-3 gap-6">
+              <div v-for="(indicator, index) in economicIndicators" 
+                  :key="index"
+                  class="bg-white rounded-lg p-4 shadow-sm">
+                <div class="text-sm text-gray-600">{{ indicator.label }}</div>
+                <div class="mt-2 h-12 flex items-center justify-center">
+                  <div class="number-container flex items-center justify-center">
+                    <transition name="scroll" mode="out-in">
+                      <div :key="scrollTrigger" class="flex items-center justify-center">
+                        <CountTo
+                          :startVal="0"
+                          :endVal="parseFloat(indicator.value)"
+                          :duration="2000"
+                          :decimals="1"
+                          @finished="triggerScroll"
+                          class="text-[#4080FF] text-3xl font-medium"
+                        />
+                        <span class="ml-1 text-gray-600 text-xl">%</span>
+                      </div>
+                    </transition>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- 功能入口 -->
-          <h2 class="text-[18px] font-medium text-[#333333] mb-6">便捷功能入口</h2>
+
+
+          <!-- Feature Section -->
+          <h2 class="text-lg font-medium text-gray-900 mb-6 text-left">便捷功能入口</h2>
           <div class="grid grid-cols-2 gap-6">
-            <!-- AI智能预测 -->
-            <div class="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-              <div class="text-[#4080FF] mb-4">
-                <i class="fas fa-robot text-3xl"></i>
+            <div v-for="(feature, index) in features" 
+                 :key="index"
+                 class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
+              <div class="w-full bg-gradient-to-br from-blue-50 to-white ">
+                <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain  rounded-t-lg" />
               </div>
-              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">
-                <router-link to="/ai-assistant" class="hover:text-[#4080FF] transition-colors">
-                  AI智能预测
-                </router-link>
-              </h3>
-              <p class="text-[#64748B] text-sm leading-relaxed">  
-                基于先进算法，快速从海量数据中找到关键信息，提供高可信度的未来经济形势预测。
-              </p>
-            </div>
-
-            <!-- 横向数据对比 -->
-            <div class="bg-white rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-              <div class="text-[#4080FF] mb-4">
-                <i class="fas fa-chart-line text-3xl"></i>
+              <div class="px-6 py-4">
+                <h3 class="text-base font-medium text-gray-900 mb-1">{{ feature.title }}</h3>
+                <p class="text-gray-600 text-sm">{{ feature.description }}</p>
               </div>
-              <h3 class="text-[16px] font-medium text-[#1B2559] mb-2">
-                <router-link to="/database" class="hover:text-[#4080FF] transition-colors">
-                  横向数据对比
-                </router-link>
-              </h3>
-              <p class="text-[#64748B] text-sm leading-relaxed">
-                从海量数据库轻松锁定不同行业和年份的经济趋势进行对比，数据至简，结果直观。
-              </p>
             </div>
           </div>
+
         </div>
       </div>
     </main>
@@ -95,9 +84,100 @@
 <script setup>
 import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
+import { ref, onMounted } from 'vue'
+import { CountTo } from 'vue3-count-to'
+import aiPredictionIcon from '@/assets/forecast.png'
+import dataComparisonIcon from '@/assets/data-compare.png'
+
+const economicIndicators = [
+  { label: 'GDP:不变价当季同比', value: '12.5' },
+  { label: '工业增加值:当月同比', value: '8.2' },
+  { label: '固定资产投资:累计同比', value: '6.8' },
+  { label: '社会消费品零售总额:当月同比', value: '7.6' },
+  { label: '居民消费价格指数:当月同比', value: '2.3' },
+]
+
+const features = [
+  {
+    title: 'AI智能预测',
+    description: '基于先进算法，快速从海量数据中找到关键信息，提供高可信度的未来经济形势预测。',
+    icon: aiPredictionIcon
+  },
+  {
+    title: '横向数据对比',
+    description: '从海量数据库轻松锁定不同行业和年份的经济趋势进行对比，数据至简，结果直观。',
+    icon: dataComparisonIcon
+  }
+]
+
+const scrollTrigger = ref(0)
+const isAnimating = ref(false)
+
+const triggerScroll = () => {
+  if (!isAnimating.value) {
+    isAnimating.value = true
+    scrollTrigger.value += 1
+    
+    // Reset animation state after transition completes
+    setTimeout(() => {
+      isAnimating.value = false
+    }, 500) // Match this with your CSS transition duration
+  }
+}
+
+// Start periodic animation
+onMounted(() => {
+  setInterval(() => {
+    triggerScroll()
+  }, 3000) // Trigger every 3 seconds after count finishes
+})
 </script>
 
 <style scoped>
+.number-container {
+  height: 3rem;
+  width: 100%;
+  overflow: hidden;
+}
+
+.main-bg {
+  background-color: #f2f5f8;
+  background-image: url('/src/assets/home-body-bg.png');
+  background-size: 60% 60%;
+  background-position: -60% -20%;
+  background-repeat: no-repeat;
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.scroll-enter-active,
+.scroll-leave-active {
+  transition: all 0.5s ease;
+}
+
+.scroll-enter-from {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.scroll-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.scroll-enter-to,
+.scroll-leave-from {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.bg-background {
+  background-color: rgb(249, 250, 251);
+}
+
 .custom-italic {
   font-style: italic;
   transform: skew(-15deg);

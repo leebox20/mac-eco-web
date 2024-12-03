@@ -177,6 +177,18 @@ import { ref, onMounted } from 'vue'
 import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
 import MarkdownIt from 'markdown-it'
+import { API_BASE_URL } from '../config'
+
+import { 
+  HomeIcon, 
+  ArrowDownWideNarrow, 
+  UserIcon, 
+  SearchIcon, 
+  ChevronDownIcon,
+  BarChartIcon,
+  XIcon
+} from 'lucide-vue-next'
+
 
 // 初始化markdown解析器
 const md = new MarkdownIt({
@@ -194,9 +206,6 @@ const renderMarkdown = (content) => {
   if (!content) return ''
   return md.render(content)
 }
-
-// API配置
-const API_BASE_URL = 'http://127.0.0.1:8888'
 
 // 状态变量
 const conversations = ref([])

@@ -260,19 +260,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import TheHeader from '@/components/TheHeader.vue'
+import TheFooter from '@/components/TheFooter.vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
-import TheHeader from '@/components/TheHeader.vue'
-import TheFooter from '@/components/TheFooter.vue'
-
-import {
-  GridComponent,
-  TooltipComponent,
-  TitleComponent,
-  DataZoomComponent,
-} from 'echarts/components'
+import { GridComponent, TooltipComponent, TitleComponent, DataZoomComponent } from 'echarts/components'
+import { API_BASE_URL } from '../config'
 import VChart from 'vue-echarts'
+
 import { 
   HomeIcon, 
   ArrowDownWideNarrow, 
@@ -293,6 +289,9 @@ use([
   TitleComponent,
   DataZoomComponent,
 ])
+
+// 注册 VChart 组件
+const chart = VChart
 
 // State
 const isComparisonMode = ref(false)
@@ -457,6 +456,7 @@ async function loadCSVData() {
     // 尝试从缓存加载
     const cachedData = loadFromCache()
     if (cachedData) {
+      console.log('从缓存加载数据')
       const { indicators, timeData, values } = cachedData
       // 生成图表配置
       charts.value = indicators.map((indicator, index) => {
@@ -479,11 +479,26 @@ async function loadCSVData() {
       }).filter(Boolean)
       
       totalCharts.value = charts.value.length
+      console.log('成功从缓存加载了', charts.value.length, '个图表')
       return
     }
 
-    const response = await fetch('/src/assets/DATALF-20241103 - DAY.csv')
+    console.log('开始从服务器加载 CSV 文件...')
+    const csvUrl = `/assets/DATALF-20241103 - DAY.csv`
+    console.log('CSV 文件 URL:', csvUrl)
+    
+    const response = await fetch(csvUrl)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    console.log('CSV 文件加载成功，开始解析...')
+    
     const csvText = await response.text()
+    console.log('CSV 文本长度:', csvText.length)
+    
+    if (!csvText || csvText.length === 0) {
+      throw new Error('CSV 文件为空')
+    }
     
     const rows = csvText.replace(/^\ufeff/, '').split('\n')
       .map(row => row.trim())

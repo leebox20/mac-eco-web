@@ -21,7 +21,8 @@
     "papaparse": "^5.4.1",
     "vue": "^3.5.12",
     "vue-chartjs": "^5.3.2",
-    "vue-echarts": "^7.0.3"
+    "vue-echarts": "^7.0.3",
+    "vue3-count-to": "^1.1.2"
   },
   "devDependencies": {
     "@headlessui/vue": "^1.7.23",
