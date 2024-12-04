@@ -38,7 +38,7 @@
           <!-- Economic Indicators -->
           <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '300ms' }">
             <div class="mb-16">
-              <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测：</h3>
+              <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测:</h3>
               <div class="grid grid-cols-3 gap-6">
                 <div v-for="(indicator, index) in economicIndicators" 
                   :key="index"
@@ -68,9 +68,13 @@
 
           <!-- Feature Section -->
           <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '600ms' }">
-            <div>
-              <h2 class="text-lg font-medium text-gray-900 mb-6 text-left">便捷功能入口</h2>
-              <div class="grid grid-cols-2 gap-6">
+            <h3 class="text-lg font-medium mb-4 text-left">便捷功能入口:</h3>
+          </Transition>
+          <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '600ms' }">
+            <div class="flex justify-between items-start">
+              <!-- Convenient Function Entry -->
+
+              <div class="w-2/3 grid grid-cols-2 gap-6">
                 <router-link 
                   v-for="(feature, index) in features" 
                   :key="index"
@@ -88,6 +92,26 @@
             </div>
           </Transition>
         </div>
+        
+        <!-- 统计数据 -->
+        <div class="absolute bottom-0 right-0 bg-transparent p-6 shadow" style="z-index: 3;">
+          <div class="mt-2">
+            <div class="flex items-center mb-2">
+              <span class="text-base text-[#666666] ml-2">今日已生成 :</span>
+              <span class="text-[16px] font-medium text-[#4080FF]">8323字</span>
+            </div>
+            <div class="flex items-center mb-2">
+              <span class="text-base text-[#666666] ml-2">数据库已收录 :</span>
+
+              <span class="text-[16px] font-medium text-[#4080FF]">12353条</span>
+            </div>
+            <div class="flex items-center">
+              <span class="text-base text-[#666666] ml-2">该系统已经运行 :</span>
+
+              <span class="text-[16px] font-medium text-[#4080FF]">79天</span>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -104,11 +128,11 @@ import aiPredictionIcon from '@/assets/forecast.png'
 import dataComparisonIcon from '@/assets/data-compare.png'
 
 const economicIndicators = [
-  { label: 'GDP:不变价当季同比', value: '12.5' },
-  { label: '工业增加值:当月同比', value: '8.2' },
-  { label: '固定资产投资:累计同比', value: '6.8' },
-  { label: '社会消费品零售总额:当月同比', value: '7.6' },
-  { label: '居民消费价格指数:当月同比', value: '2.3' },
+  { label: 'GDP:不变价当季同比', value: '4.67%' },
+  { label: 'PPI:当月同比', value: '-2.0%' },
+  { label: '固定资产投资:累计同比', value: '3.75%' },
+  { label: '社会消费品零售总额:当月同比', value: '6.25%' },
+  { label: '居民消费价格指数:当月同比', value: '0.57%' },
 ]
 
 const features = [

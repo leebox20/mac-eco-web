@@ -3,6 +3,7 @@ import Home from '../views/Home.vue'
 import Login from '../views/Login.vue'
 import Database from '../views/Database/Index.vue'
 import AnalysisResult from '@/views/AnalysisResult.vue'
+import AnalysisPredictResult from '@/views/AnalysisPredictResult.vue'
 
 const routes = [
   {
@@ -34,7 +35,13 @@ const routes = [
     path: '/prediction',
     name: 'Prediction',
     component: () => import('@/views/Prediction.vue')
-  }
+  },
+  {
+    path: '/analysis-prediction/:indicatorId',
+    name: 'AnalysisPredictResult',
+    component: () => import('@/views/AnalysisPredictResult.vue'),
+    props: true
+  }  
 ]
 
 const router = createRouter({

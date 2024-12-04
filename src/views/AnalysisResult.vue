@@ -1,10 +1,10 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-[#F2F5F8]">
     <TheHeader />
     
     <!-- 面包屑导航 -->
 
-    <div class="bg-[#4080ff]  py-6 px-4 border-t border-gray-400 border-capacity-40">
+    <div class="bg-[#348fef]  py-6 px-4 border-t border-gray-400 border-capacity-40">
       <div class="container mx-auto px-10 flex items-center space-x-2 ">
         <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
         <router-link to="/database" class="text-gray-200 text-sm">
@@ -36,6 +36,7 @@
         <div class="p-6 space-y-6 bg-white rounded-b-lg shadow text-left">
           <div v-if="analysisContent" class="prose prose-sm max-w-none" v-html="renderMarkdown(analysisContent)"></div>
           <div v-if="isLoading" class="text-gray-600">分析中...</div>
+          <div v-if="!analysisContent && !isLoading" class="text-gray-600">暂无数据可供分析。</div>
         </div>
       </div>
     </main>

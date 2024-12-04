@@ -5,7 +5,7 @@
     <!-- Subheader -->
     <div class="bg-[#348fef] py-6 px-4 border-t border-white border-opacity-10">
       <div class="container mx-auto px-10 flex items-center space-x-2">
-        <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
+        <chart-bar-icon class="h-5 w-5 text-gray-200" />
         <span class="text-sm text-gray-200">经济指标预测</span>
       </div>
     </div>
@@ -35,27 +35,19 @@
         <!-- Right Content - Charts -->
         <div class="w-3/4 space-y-6">
           <div v-if="selectedIndicators.length === 0" class="bg-white rounded-lg shadow p-8 text-center">
-            <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
             <p class="text-gray-600">请在左侧选择需要预测的经济指标</p>
           </div>
           <template v-else>
             <div
               v-for="indicatorId in selectedIndicators"
               :key="indicatorId"
-              class="bg-white rounded-lg shadow p-4 relative"
+              class="bg-white rounded-lg shadow p-4"
             >
               <h4 class="text-lg font-medium text-gray-800 mb-4">
                 {{ getIndicatorName(indicatorId) }}预测
               </h4>
-              <div class="h-[400px] relative">
+              <div class="h-[400px]">
                 <v-chart :option="generateCombinedChartOption(indicatorId)" :init-options="chartConfig" autoresize />
-                <router-link :to="{ name: 'AnalysisPredictResult', params: { indicatorId: indicatorId } }" class="bg-[#4080ff] text-white py-1 px-2 rounded absolute top-2 right-2">
-                  AI解读
-                </router-link>
-              </div>
-              <div v-if="analysisResults[indicatorId]" class="mt-4">
-                <h5 class="text-lg font-medium text-gray-800 mb-2">分析结果</h5>
-                <div v-html="renderMarkdown(analysisResults[indicatorId])" class="markdown-body"></div>
               </div>
             </div>
           </template>
@@ -81,18 +73,6 @@ import {
 import VChart from 'vue-echarts'
 import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
-import { API_BASE_URL } from '../config'
-import { marked } from 'marked'
-
-import { 
-  HomeIcon, 
-  ArrowDownWideNarrow, 
-  UserIcon, 
-  SearchIcon, 
-  ChevronDownIcon,
-  BarChartIcon,
-  XIcon
-} from 'lucide-vue-next'
 
 // 注册必须的组件
 use([
@@ -120,8 +100,6 @@ const selectedIndicators = ref(['gdp'])
 // 数据存储
 const seasonalData = ref(null)
 const monthlyData = ref(null)
-const analysisResults = ref({})
-const loadingIndicators = ref([])
 
 // 加载CSV数据
 const loadData = async () => {
@@ -415,33 +393,17 @@ const generateCombinedChartOption = (indicatorId) => {
   }
 }
 
-// Function to call backend API for analysis
-const analyze = async (indicatorId) => {
-  if (loadingIndicators.value.includes(indicatorId)) return
-  loadingIndicators.value.push(indicatorId)
+const analysisResults = ref({});
 
+const analyzeIndicator = async (indicatorId) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ indicatorId }),
-    })
-    const result = await response.json()
-    analysisResults.value[indicatorId] = result.analysis
+    const response = await fetch(`/api/analyze?indicatorId=${indicatorId}`);
+    const data = await response.json();
+    analysisResults.value[indicatorId] = data.analysis;
   } catch (error) {
-    console.error('Error fetching analysis:', error)
-  } finally {
-    loadingIndicators.value = loadingIndicators.value.filter(id => id !== indicatorId)
+    console.error('Error fetching analysis:', error);
   }
-}
-
-// Markdown rendering function
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  return marked(content)
-}
+};
 
 // 在组件挂载时加载数据
 onMounted(() => {

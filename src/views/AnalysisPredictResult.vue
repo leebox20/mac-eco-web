@@ -1,64 +1,42 @@
 <template>
   <div class="min-h-screen bg-[#F2F5F8]">
     <TheHeader />
+    
+    <!-- 面包屑导航 -->
 
-    <!-- Subheader -->
-    <div class="bg-[#348fef] py-6 px-4 border-t border-white border-opacity-10">
-      <div class="container mx-auto px-10 flex items-center space-x-2">
+    <div class="bg-[#348fef]  py-6 px-4 border-t border-gray-400 border-capacity-40">
+      <div class="container mx-auto px-10 flex items-center space-x-2 ">
         <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
-        <span class="text-sm text-gray-200">经济指标预测</span>
+        <router-link to="/prediction" class="text-gray-200 text-sm">
+          宏观预测
+        </router-link>
+          <ChevronRightIcon class="h-4 w-4 text-gray-200" />
+          <span class="text-gray-200 text-sm">分析结果</span>
       </div>
     </div>
 
-    <!-- Main Content -->
-    <main class="container mx-auto py-6 px-4">
-      <div class="flex gap-6 px-10">
-        <!-- Left Sidebar - Indicator Selection -->
-        <div class="w-1/4 bg-white rounded-lg shadow p-4">
-          <h3 class="text-lg font-medium text-gray-800 mb-4">指标选择</h3>
-          <div class="space-y-3">
-            <div v-for="indicator in indicators" :key="indicator.id" class="flex items-center">
-              <input
-                type="checkbox"
-                :id="indicator.id"
-                v-model="selectedIndicators"
-                :value="indicator.id"
-                class="w-4 h-4 text-[#4080ff] border-gray-300 rounded focus:ring-[#4080ff]"
-              />
-              <label :for="indicator.id" class="ml-2 text-sm text-gray-700">
-                {{ indicator.name }} ({{ indicator.type === 'seasonal' ? '季度' : '月度' }})
-              </label>
-            </div>
-          </div>
-        </div>
 
-        <!-- Right Content - Charts -->
-        <div class="w-3/4 space-y-6">
-          <div v-if="selectedIndicators.length === 0" class="bg-white rounded-lg shadow p-8 text-center">
-            <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
-            <p class="text-gray-600">请在左侧选择需要预测的经济指标</p>
-          </div>
-          <template v-else>
-            <div
-              v-for="indicatorId in selectedIndicators"
-              :key="indicatorId"
-              class="bg-white rounded-lg shadow p-4 relative"
-            >
-              <h4 class="text-lg font-medium text-gray-800 mb-4">
-                {{ getIndicatorName(indicatorId) }}预测
-              </h4>
-              <div class="h-[400px] relative">
-                <v-chart :option="generateCombinedChartOption(indicatorId)" :init-options="chartConfig" autoresize />
-                <router-link :to="{ name: 'AnalysisPredictResult', params: { indicatorId: indicatorId } }" class="bg-[#4080ff] text-white py-1 px-2 rounded absolute top-2 right-2">
-                  AI解读
-                </router-link>
-              </div>
-              <div v-if="analysisResults[indicatorId]" class="mt-4">
-                <h5 class="text-lg font-medium text-gray-800 mb-2">分析结果</h5>
-                <div v-html="renderMarkdown(analysisResults[indicatorId])" class="markdown-body"></div>
-              </div>
-            </div>
-          </template>
+    <!-- 主要内容区域 -->
+    <main class="container mx-auto py-6 px-4  ">
+        <!-- 趋势对比图表 -->
+      <div class="rounded-lg  mb-6 px-6">
+        <div class="px-4  py-2 border-b  rounded-t-lg bg-gray shadow">
+          <h2 class="text-sm text-left font-medium">预测走势</h2>
+        </div>
+        <div class="p-4 h-[400px]  bg-white rounded-b-lg shadow">
+          <v-chart class="chart" :option="chartOption" autoresize />
+        </div>
+      </div>
+
+      <!-- 结果分析 -->
+      <div class="rounded-lg  mb-6 px-6">
+        <div class="px-4 py-2 border-b  rounded-t-lg bg-gray shadow">
+            <h2 class="text-sm text-left font-medium">结果分析</h2>
+        </div>
+        <div class="p-6 space-y-6 bg-white rounded-b-lg shadow text-left">
+          <div v-if="analysisContent" class="prose prose-sm max-w-none" v-html="renderMarkdown(analysisContent)"></div>
+          <div v-if="isLoading" class="text-gray-600">分析中...</div>
+          <div v-if="!analysisContent && !isLoading" class="text-gray-600">暂无数据可供分析。</div>
         </div>
       </div>
     </main>
@@ -71,22 +49,17 @@ import { ref, computed, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
-import {
-  TitleComponent,
+import { 
+  GridComponent,
   TooltipComponent,
   LegendComponent,
-  GridComponent,
-  DataZoomComponent,
+  TitleComponent 
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import TheHeader from '@/components/TheHeader.vue'
-import TheFooter from '@/components/TheFooter.vue'
-import { API_BASE_URL } from '../config'
-import { marked } from 'marked'
-
 import { 
   HomeIcon, 
   ArrowDownWideNarrow, 
+  ChevronRightIcon,
   UserIcon, 
   SearchIcon, 
   ChevronDownIcon,
@@ -94,42 +67,189 @@ import {
   XIcon
 } from 'lucide-vue-next'
 
-// 注册必须的组件
+import TheHeader from '@/components/TheHeader.vue'
+import TheFooter from '@/components/TheFooter.vue'
+import MarkdownIt from 'markdown-it'
+
+import { useRoute } from 'vue-router'
+import { API_BASE_URL } from '../config'
+
 use([
   CanvasRenderer,
   LineChart,
-  TitleComponent,
+  GridComponent,
   TooltipComponent,
   LegendComponent,
-  GridComponent,
-  DataZoomComponent,
+  TitleComponent
 ])
 
-// 指标数据
-const indicators = ref([
-  { id: 'gdp', name: 'GDP增长率', type: 'seasonal', csvName: '中国:GDP:不变价:当季同比' },
-  { id: 'retail', name: '社会消费品零售总额', type: 'monthly', csvName: '中国:社会消费品零售总额:当月同比' },
-  { id: 'cpi', name: 'CPI同比', type: 'monthly', csvName: '中国:CPI:当月同比' },
-  { id: 'ppi', name: 'PPI同比', type: 'monthly', csvName: '中国:PPI:全部工业品:当月同比' },
-  { id: 'investment', name: '固定资产投资', type: 'monthly', csvName: '中国:固定资产投资完成额:累计同比' }
-])
+// 初始化markdown解析器
+const md = new MarkdownIt({
+  html: true,
+  breaks: true,
+  linkify: true
+})
 
-// 默认选中GDP增长率
-const selectedIndicators = ref(['gdp'])
+// 自定义渲染规则，减少空行
+md.renderer.rules.paragraph_open = () => '<p class="mb-1">'
+md.renderer.rules.list_item_open = () => '<li class="mb-1">'
 
-// 数据存储
-const seasonalData = ref(null)
-const monthlyData = ref(null)
-const analysisResults = ref({})
-const loadingIndicators = ref([])
+// 解析markdown内容
+const renderMarkdown = (content) => {
+  if (!content) return ''
+  return md.render(content)
+}
 
-// 加载CSV数据
-const loadData = async () => {
+// 图表配置
+const chartOption = ref({
+  tooltip: {
+    trigger: 'axis'
+  },
+  legend: {
+    data: []
+  },
+  grid: {
+    left: '3%',
+    right: '4%',
+    bottom: '3%',
+    containLabel: true
+  },
+  xAxis: {
+    type: 'category',
+    data: []
+  },
+  yAxis: {
+    type: 'value'
+  },
+  series: []
+})
+
+// 分析结果内容
+const analysisContent = ref('')
+const isLoading = ref(false)
+const currentConversationId = ref(null)
+
+// 发送数据到后端API获取分析
+const getAnalysis = async (chartData) => {
   try {
-    // 确保请求的 URL 是正确的
-    const gdpResponse = await fetch(new URL('/data/seasonal_gdp.csv', window.location.origin))
+    isLoading.value = true
+    
+    console.log('原始图表数据:', chartData)
+    
+    // 验证数据是否有效
+    if (!chartData.data || !chartData.time || !chartData.data.length || !chartData.time.length) {
+      throw new Error('图表数据无效')
+    }
+
+    // 获取最近30条数据
+    const startIndex = Math.max(0, chartData.data.length - 30)
+    const recentData = chartData.time.slice(startIndex).map((time, index) => {
+      const dataIndex = startIndex + index
+      const value = chartData.data[dataIndex]
+      return {
+        date: time,
+        value: typeof value === 'number' ? value.toFixed(4) : null
+      }
+    })
+    
+    // 检查是否所有数据都为空
+    const hasValidData = recentData.some(item => item.value !== null)
+    if (!hasValidData) {
+      analysisContent.value = '**数据无效**\n\n当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。'
+      return
+    }
+    
+    console.log('处理后的数据:', recentData)
+    
+    // 构建prompt
+    const prompt = `你是一名专业的经济分析师。现在，我将提供一个名为【${chartData.name}】的经济数据，该数据集涵盖了从【${recentData[0].date}】至【${recentData[recentData.length-1].date}】的${recentData.length}条数据。在分析这些数据时，你需要重点关注数据的来源、分类、可靠性和时效性。
+以下是你将遵循的分析步骤：
+#趋势和变化分析：
+首先识别数据中的主要趋势和周期性变化。
+#原因和影响因素探究：
+探讨可能影响数据变化的经济、政治和社会因素。
+分析这些因素如何与数据变化相关联，并尝试建立因果关系。
+#综合经济指标分析：
+结合其他相关经济指标，以获得更全面的视角。
+评估这些指标如何相互影响，并共同作用于提供的数据。
+#为了确保分析的时效性和准确性，请使用百度搜索插件来获取最新的经济资讯和数据。确保这些资讯与分析报告的关联性，并在报告中注明来源。引用习近平总书记或政府官方部门在相关领域的最新论述和政策指导。这些论述将作为分析报告的重要论据，以增强报告的权威性和深度。
+以下是具体的数据内容：【${JSON.stringify(recentData)}】`
+
+    // 创建新会话
+    const convResponse = await fetch(`${API_BASE_URL}/conversation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!convResponse.ok) {
+      throw new Error('创建会话失败')
+    }
+    
+    const convData = await convResponse.json()
+    currentConversationId.value = convData.conversation_id
+
+    // 发送流式请求
+    const response = await fetch(`${API_BASE_URL}/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        conversation_id: currentConversationId.value,
+        query: prompt
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error('分析请求失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let result = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      result += decoder.decode(value, { stream: true })
+      analysisContent.value = result
+    }
+
+    isLoading.value = false
+  } catch (error) {
+    console.error('分析过程出错:', error)
+    analysisContent.value = '**分析失败**\n\n无法获取分析结果，请稍后重试。'
+    isLoading.value = false
+  }
+}
+
+const route = useRoute()
+const chartIds = computed(() => {
+  const ids = route.query.charts
+  return ids ? ids.split(',') : []
+})
+
+// 根据 chartIds 获取对应的图表数据
+onMounted(() => {
+  const indicatorId = route.params.indicatorId
+  if (chartIds.value.length) {
+    updateChartOption(chartIds.value)
+    loadChartData(chartIds.value)
+  } else if (indicatorId) {
+    loadCSVData(indicatorId)
+  }
+})
+
+// Function to load CSV data based on indicatorId
+const chartData = ref({ time: [], data: [] })
+const loadCSVData = async (indicatorId) => {
+  try {
+    // Load seasonal GDP data
+    const gdpResponse = await fetch(new URL(`/data/seasonal_gdp.csv`, window.location.origin))
     const gdpText = await gdpResponse.text()
-    const gdpRows = gdpText.replace(/^\\ufeff/, '').split('\n').slice(1) // 跳过标题行
+    const gdpRows = gdpText.replace(/^\ufeff/, '').split('\n').slice(1) // Skip header row
     seasonalData.value = {
       gdp: {
         dates: [],
@@ -142,9 +262,9 @@ const loadData = async () => {
     gdpRows.forEach(row => {
       if (!row.trim()) return
       const [date, valueStr] = row.split(',')
-      if (!valueStr) return // 添加空值检查
+      if (!valueStr) return // Add null check
       
-      // 检查是否包含预测区间 (±)
+      // Check for prediction interval (±)
       if (valueStr.trim().includes('±')) {
         const [baseValue, interval] = valueStr.trim().split('±')
         const value = parseFloat(baseValue)
@@ -164,10 +284,10 @@ const loadData = async () => {
       }
     })
 
-    // 加载月度数据
+    // Load monthly data
     const monthlyResponse = await fetch(new URL('/data/monthly_data.csv', window.location.origin))
     const monthlyText = await monthlyResponse.text()
-    const monthlyRows = monthlyText.replace(/^\\ufeff/, '').split('\n').slice(1)
+    const monthlyRows = monthlyText.replace(/^\ufeff/, '').split('\n').slice(1)
     
     monthlyData.value = {
       retail: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
@@ -180,9 +300,9 @@ const loadData = async () => {
       if (!row.trim()) return
       const [date, retail, cpi, ppi, investment] = row.split(',')
       
-      // 处理每个指标
+      // Process each indicator
       const processIndicator = (valueStr, indicator) => {
-        if (!valueStr) return // 添加空值检查
+        if (!valueStr) return // Add null check
         
         if (valueStr.trim().includes('±')) {
           const [baseValue, interval] = valueStr.trim().split('±')
@@ -208,22 +328,18 @@ const loadData = async () => {
       processIndicator(ppi, 'ppi')
       processIndicator(investment, 'investment')
     })
+
+    console.log('调用getAnalysis函数')
+    console.log('传递的数据:', chartData.value)
+    getAnalysis(chartData.value)
   } catch (error) {
-    console.error('Error loading data:', error)
+    console.error('加载CSV数据出错:', error)
   }
 }
 
-const getIndicatorData = (indicatorId) => {
-  const indicator = indicators.value.find(item => item.id === indicatorId)
-  if (!indicator) return null
-  
-  return indicator.type === 'seasonal' 
-    ? seasonalData.value?.[indicatorId]
-    : monthlyData.value?.[indicatorId]
-}
-
-const getIndicatorName = (id) => {
-  return indicators.value.find(item => item.id === id)?.name || ''
+// 更新图表配置
+const updateChartOption = (selectedCharts) => {
+  // 更新图表逻辑
 }
 
 const generateCombinedChartOption = (indicatorId) => {
@@ -233,7 +349,7 @@ const generateCombinedChartOption = (indicatorId) => {
   const indicator = indicators.value.find(item => item.id === indicatorId)
   const interval = indicator?.type === 'seasonal' ? 3 : 11
 
-  // 处理置信区间数据
+  // Handle confidence interval data
   const upperBound = []
   const lowerBound = []
 
@@ -414,51 +530,10 @@ const generateCombinedChartOption = (indicatorId) => {
     }
   }
 }
-
-// Function to call backend API for analysis
-const analyze = async (indicatorId) => {
-  if (loadingIndicators.value.includes(indicatorId)) return
-  loadingIndicators.value.push(indicatorId)
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ indicatorId }),
-    })
-    const result = await response.json()
-    analysisResults.value[indicatorId] = result.analysis
-  } catch (error) {
-    console.error('Error fetching analysis:', error)
-  } finally {
-    loadingIndicators.value = loadingIndicators.value.filter(id => id !== indicatorId)
-  }
-}
-
-// Markdown rendering function
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  return marked(content)
-}
-
-// 在组件挂载时加载数据
-onMounted(() => {
-  loadData()
-})
-
-const chartConfig = {
-  renderer: 'canvas',
-  useDirtyRect: true,
-  useCoarsePointer: true,
-  progressive: 500,
-  progressiveThreshold: 3000
-}
 </script>
 
 <style scoped>
-.v-chart {
+.chart {
   width: 100%;
   height: 100%;
 }

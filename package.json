@@ -18,6 +18,7 @@
     "lottie-web": "^5.12.2",
     "lucide-vue-next": "^0.461.0",
     "markdown-it": "^14.1.0",
+    "marked": "^15.0.3",
     "papaparse": "^5.4.1",
     "vue": "^3.5.12",
     "vue-chartjs": "^5.3.2",
