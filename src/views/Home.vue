@@ -278,6 +278,7 @@ onMounted(() => {
   border: 3px solid rgba(64, 128, 255, 0.25);
   border-radius: 50%;
   animation: ripple 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: 0;
 }
 
 .ripple:nth-child(2) {
