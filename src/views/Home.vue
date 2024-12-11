@@ -4,32 +4,21 @@
     <TheHeader />
     
     <!-- 主要内容 -->
-    <main class="main-bg min-h-screen relative overflow-hidden mb-12">
-      <!-- 地图背景 -->
-      <Transition name="slide-from-right" appear>
-        <div class="absolute right-0 top-0 w-1/2 h-full pointer-events-none" style="z-index: 1;">
-          <img src="@/assets/home-map.png" alt="" class="w-full h-full object-contain">
-          <div class="ripple-container">
-            <div class="ripple"></div>
-            <div class="ripple"></div>
-            <div class="ripple"></div>
-          </div>
-        </div>
-      </Transition>
+    <main class="main-bg min-h-screen relative overflow-hidden">
       
       <!-- 内容区域 -->
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative pt-24" style="z-index: 2;">
-        <div class="max-w-3xl">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative pt-12" style="z-index: 2;">
+        <div class="w-full">
           <!-- 欢迎区域 -->
           <Transition name="fade-up" appear>
-            <div class="mb-16 text-left">
+            <div class="max-w-3xl mb-16 text-left">
               <h1 class="text-2xl font-medium text-gray-900 leading-tight">
-                欢迎使用<span class="text-primary">中国宏观经济大数据AI预测系统</span>！
+                欢迎使用<span class="text-[#348FEF]">中国宏观经济大数据AI预测系统!</span>
               </h1>
-              <p class="mt-8 text-base text-gray-600 leading-7">
+              <p class="mt-4 text-base text-gray-600 leading-1">
                 我们致力于为用户提供专业、高效的宏观经济趋势分析服务。通过强大的大数据处理能力，我们能够轻松找到特定年份某个行业的经济趋势，并与其他年份进行精准对比，从而帮助您清晰了解行业发展的脉络与变化。
               </p>
-              <p class="mt-6 text-base text-gray-600 leading-7">
+              <p class="mt-2 text-base text-gray-600 leading-1">
                 不仅如此，基于对历史数据的深入分析和先进的预测算法，我们可以对未来的经济形势进行科学预测，为您的战略决策提供可靠依据，无论是投资、市场研究，还是政策制定，我们都能助您一臂之力。
               </p>
             </div>
@@ -37,86 +26,47 @@
 
           <!-- Economic Indicators -->
           <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '300ms' }">
-            <div class="mb-16">
-              <h3 class="text-lg font-medium mb-4 text-left">次月/季数据预测:</h3>
-              <div class="grid grid-cols-3 gap-6">
-                <div v-for="(indicator, index) in economicIndicators" 
-                  :key="index"
-                  class="bg-white rounded-lg p-4 shadow-sm">
-                  <div class="text-sm text-gray-600">{{ indicator.label }}</div>
-                  <div class="mt-2 h-12 flex items-center justify-center">
-                    <div class="number-container flex items-center justify-center">
-                      <transition name="scroll" mode="out-in">
-                        <div :key="scrollTrigger" class="flex items-center justify-center">
-                          <CountTo
-                            :startVal="0"
-                            :endVal="parseFloat(indicator.value)"
-                            :duration="2000"
-                            :decimals="1"
-                            @finished="triggerScroll"
-                            class="text-[#4080FF] text-3xl font-medium"
-                          />
-                          <span class="ml-1 text-gray-600 text-xl">%</span>
-                        </div>
-                      </transition>
+            <div class="bg-white rounded-lg shadow-sm mb-16 pb-6">
+              <!-- Card Header -->
+              <h3 class="text-base font-medium mb-6 text-center border-b border-gray-200 p-3">次月/季数据预测:</h3>
+              
+              <!-- Tabs/Indicators -->
+              <div class="flex space-x-4 mb-6 overflow-x-auto px-6 py-2">
+                <template v-for="(indicator, index) in economicIndicators" :key="index">
+                  <button
+                    @click="activeTabIndex = index"
+                    :class="[
+                      'px-4 py-3 rounded-lg transition-all duration-200 min-w-[200px] h-[100px] w-[200px]',
+                      activeTabIndex === index 
+                        ? 'bg-[#EFF5FF] border border-[#EFF5FF]' 
+                        : 'bg-white'
+                    ]"
+                  >
+                    <div class="text-sm text-[#8B8B8B] h-[40px] flex items-center justify-center">
+                      {{ indicator.label }}
                     </div>
-                  </div>
-                </div>
+                    <div class="h-[40px] flex items-center justify-center">
+                      <span :class="[
+                        'text-2xl font-medium',
+                        indicator.value < 0 ? 'text-red-500' : 'text-[#4080FF]'
+                      ]">
+                        {{ indicator.value }}
+                      </span>
+                      <span class="ml-1 text-gray-600">%</span>
+                    </div>
+                  </button>
+                  <div v-if="index !== economicIndicators.length - 1" class="h-12 w-[1px] bg-gray-200 self-center"></div>
+                </template>
               </div>
+
+              <!-- Chart Area -->
+              <div class="h-[400px]" ref="chartRef"></div>
             </div>
           </Transition>
 
-          <!-- Feature Section -->
-          <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '600ms' }">
-            <h3 class="text-lg font-medium mb-4 text-left">便捷功能入口:</h3>
-          </Transition>
-          <Transition name="fade-up" appear :duration="{ enter: 500 }" :style="{ transitionDelay: '600ms' }">
-            <div class="flex justify-between items-start">
-              <!-- Convenient Function Entry -->
-
-              <div class="w-2/3 grid grid-cols-2 gap-6">
-                <router-link 
-                  v-for="(feature, index) in features" 
-                  :key="index"
-                  :to="feature.route"
-                  class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                  <div class="w-full bg-gradient-to-br from-blue-50 to-white ">
-                    <img :src="feature.icon" :alt="feature.title" class="w-full h-full object-contain rounded-t-lg" />
-                  </div>
-                  <div class="px-6 py-4">
-                    <h3 class="text-base font-medium text-gray-900 mb-1">{{ feature.title }}</h3>
-                    <p class="text-gray-600 text-sm">{{ feature.description }}</p>
-                  </div>
-                </router-link>
-              </div>
-            </div>
-          </Transition>
         </div>
         
-        <!-- 统计数据 -->
-        <div class="absolute bottom-0 right-0 bg-transparent p-6 shadow" style="z-index: 3;">
-          <div class="mt-2">
-            <div class="flex items-center mb-2">
-              <span class="text-base text-[#666666] ml-2">今日已生成 :</span>
-              <span class="text-[16px] font-medium text-[#4080FF]">8323字</span>
-            </div>
-            <div class="flex items-center mb-2">
-              <span class="text-base text-[#666666] ml-2">数据库已收录 :</span>
-
-              <span class="text-[16px] font-medium text-[#4080FF]">12353条</span>
-            </div>
-            <div class="flex items-center mb-2">
-              <span class="text-base text-[#666666] ml-2">该系统已经运行 :</span>
-
-              <span class="text-[16px] font-medium text-[#4080FF]">79天</span>
-            </div>
-            <div class="flex items-center">
-              <span class="text-base text-[#666666] ml-2">大模型持续监控，已实时更新:</span>
-
-              <span class="text-[16px] font-medium text-[#4080FF]">79天</span>
-            </div>
-          </div>
-        </div>
+     
       </div>
     </main>
 
@@ -127,33 +77,21 @@
 <script setup>
 import TheHeader from '@/components/TheHeader.vue'
 import TheFooter from '@/components/TheFooter.vue'
-import { ref, onMounted } from 'vue'
-import { CountTo } from 'vue3-count-to'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { CountTo } from 'vue3-count-to' 
 import aiPredictionIcon from '@/assets/forecast.png'
 import dataComparisonIcon from '@/assets/data-compare.png'
 
+import * as echarts from 'echarts'
+
 const economicIndicators = [
-  { label: 'GDP:不变价当季同比', value: '4.67%' },
-  { label: 'PPI:当月同比', value: '-2.0%' },
-  { label: '固定资产投资:累计同比', value: '3.75%' },
-  { label: '社会消费品零售总额:当月同比', value: '6.25%' },
-  { label: '居民消费价格指数:当月同比', value: '0.57%' },
+  { label: 'GDP:不变价-当季同比', value: '4.67' },
+  { label: '社会消费品零售总额:当月同比', value: '6.25' },
+  { label: 'CPI:当月同比', value: '0.57' },
+  { label: 'PPI:全部工业品-当月同比', value: '-2.0' },
+  { label: '固定资产投资完成额:累计同比', value: '3.75' },
 ]
 
-const features = [
-  {
-    title: 'AI智能预测',
-    description: '基于先进算法，快速从海量数据中找到关键信息，提供高可信度的未来经济形势预测。',
-    icon: aiPredictionIcon,
-    route: '/ai-assistant'
-  },
-  {
-    title: '横向数据对比',
-    description: '从海量数据库轻松锁定不同行业和年份的经济趋势进行对比，数据至简，结果直观。',
-    icon: dataComparisonIcon,
-    route: '/database'
-  }
-]
 
 const scrollTrigger = ref(0)
 const isAnimating = ref(false)
@@ -176,6 +114,205 @@ onMounted(() => {
     triggerScroll()
   }, 3000) // Trigger every 3 seconds after count finishes
 })
+
+
+// 图表相关
+const chartRef = ref(null)
+let chartInstance = null
+
+
+// 添加图表组件和数据
+const LineChart = {
+  props: ['chartData'],
+  mounted() {
+    const chart = echarts.init(this.$el)
+    const option = {
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: this.chartData.dates,
+        boundaryGap: false
+      },
+      yAxis: {
+        type: 'value',
+        scale: true
+      },
+      series: [{
+        data: this.chartData.values,
+        type: 'line',
+        smooth: true,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{
+            offset: 0,
+            color: 'rgba(64, 128, 255, 0.3)'
+          }, {
+            offset: 1,
+            color: 'rgba(64, 128, 255, 0.1)'
+          }])
+        },
+        lineStyle: {
+          color: '#4080FF'
+        },
+        itemStyle: {
+          color: '#4080FF'
+        }
+      }]
+    }
+    chart.setOption(option)
+  }
+}
+
+// 模拟图表数据
+const chartDataSets = [
+  {
+    dates: ['1970/3/13', '1970/4/3', '1970/4/24', '1970/5/15', '1970/6/5', '1970/6/26', 
+            '1970/7/17', '1970/8/7', '1970/8/28', '1970/9/18', '1970/10/9', '1970/10/30'],
+    values: [20, 15, -10, 5, 20, 45, 40, 50, 65, 90, 100, 95]
+  },
+  {
+    dates: ['1970/3/13', '1970/4/3', '1970/4/24', '1970/5/15', '1970/6/5', '1970/6/26', 
+            '1970/7/17', '1970/8/7', '1970/8/28', '1970/9/18', '1970/10/9', '1970/10/30'],
+    values: [30, 25, 0, 10, 30, 55, 50, 60, 75, 100, 110, 105]
+  },
+  {
+    dates: ['1970/3/13', '1970/4/3', '1970/4/24', '1970/5/15', '1970/6/5', '1970/6/26', 
+            '1970/7/17', '1970/8/7', '1970/8/28', '1970/9/18', '1970/10/9', '1970/10/30'],
+    values: [10, 5, -20, -5, 10, 35, 30, 40, 55, 80, 90, 85]
+  },
+  {
+    dates: ['1970/3/13', '1970/4/3', '1970/4/24', '1970/5/15', '1970/6/5', '1970/6/26', 
+            '1970/7/17', '1970/8/7', '1970/8/28', '1970/9/18', '1970/10/9', '1970/10/30'],
+    values: [40, 35, 10, 15, 40, 65, 60, 70, 85, 110, 120, 115]
+  },
+  {
+    dates: ['1970/3/13', '1970/4/3', '1970/4/24', '1970/5/15', '1970/6/5', '1970/6/26', 
+            '1970/7/17', '1970/8/7', '1970/8/28', '1970/9/18', '1970/10/9', '1970/10/30'],
+    values: [-5, -10, -30, -15, -5, 20, 15, 25, 40, 65, 75, 70]
+  }
+]
+
+// 初始化图表
+const initChart = () => {
+  if (chartRef.value) {
+    chartInstance = echarts.init(chartRef.value)
+    const option = {
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: chartDataSets[activeTabIndex.value].dates,
+        boundaryGap: false
+      },
+      yAxis: {
+        type: 'value',
+        scale: true
+      },
+      series: [{
+        data: chartDataSets[activeTabIndex.value].values,
+        type: 'line',
+        smooth: true,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{
+            offset: 0,
+            color: 'rgba(64, 128, 255, 0.3)'
+          }, {
+            offset: 1,
+            color: 'rgba(64, 128, 255, 0.1)'
+          }])
+        },
+        lineStyle: {
+          color: '#4080FF'
+        },
+        itemStyle: {
+          color: '#4080FF'
+        }
+      }]
+    }
+    chartInstance.setOption(option)
+  }
+}
+
+// 处理窗口大小变化
+const handleResize = () => {
+  if (chartInstance) {
+    chartInstance.resize()
+  }
+}
+
+onMounted(() => {
+  initChart()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
+  window.removeEventListener('resize', handleResize)
+})
+
+const activeTabIndex = ref(0)
+
+// 监听 activeTabIndex 的变化来更新图表
+watch(activeTabIndex, (newIndex) => {
+  // 这里可以根据选中的指标更新图表数据
+  updateChart(economicIndicators[newIndex])
+})
+
+// 更新图表的方法
+const updateChart = (indicator) => {
+  if (!chartInstance) return
+  
+  const chartData = chartDataSets[activeTabIndex.value] // 根据当前激活的标签索引获取数据
+  const option = {
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: chartData.dates,
+      boundaryGap: false
+    },
+    yAxis: {
+      type: 'value',
+      scale: true
+    },
+    series: [{
+      data: chartData.values,
+      type: 'line',
+      smooth: true,
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{
+          offset: 0,
+          color: 'rgba(64, 128, 255, 0.3)'
+        }, {
+          offset: 1,
+          color: 'rgba(64, 128, 255, 0.1)'
+        }])
+      },
+      lineStyle: {
+        color: '#4080FF'
+      },
+      itemStyle: {
+        color: '#4080FF'
+      }
+    }]
+  }
+  chartInstance.setOption(option)
+}
+
 </script>
 
 <style scoped>
@@ -187,10 +324,12 @@ onMounted(() => {
 
 .main-bg {
   background-color: #f2f5f8;
-  background-image: url('/src/assets/home-body-bg.png');
-  background-size: 60% 60%;
-  background-position: -60% -20%;
-  background-repeat: no-repeat;
+  background-image: 
+    url('/src/assets/home-body-bg2-left.png'),
+    url('/src/assets/home-body-bg2-right.png');
+  background-size: 60% 60%, 60% 60%;
+  background-position: 0 0, 100% 0;
+  background-repeat: no-repeat, no-repeat;
 }
 
 .grid-cols-3 {
@@ -305,5 +444,10 @@ onMounted(() => {
     height: 600px;
     opacity: 0;
   }
+}
+
+/* 添加新的图表相关样式 */
+.grid-cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 </style>

@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+      "target": "esnext",        // Target modern JavaScript (ESNext)
+      "module": "esnext",        // Use ES modules
+      "moduleResolution": "node",// Use Node.js-style module resolution
+      "strict": true,            // Enable strict type-checking
+      "jsx": "preserve",         // Keep JSX syntax for Vue 3
+      "baseUrl": ".",            // Base directory for resolving paths (root)
+      "paths": {
+        "@/*": ["src/*"],        // Map `@` alias to `src` directory
+      }
+    },
+    "exclude": ["node_modules"], // Exclude node_modules from project files
+    "include": ["src/**/*"]      // Include all files in the src directory
+  }
+  
