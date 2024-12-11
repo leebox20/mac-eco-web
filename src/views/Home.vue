@@ -105,8 +105,13 @@
 
               <span class="text-[16px] font-medium text-[#4080FF]">12353条</span>
             </div>
-            <div class="flex items-center">
+            <div class="flex items-center mb-2">
               <span class="text-base text-[#666666] ml-2">该系统已经运行 :</span>
+
+              <span class="text-[16px] font-medium text-[#4080FF]">79天</span>
+            </div>
+            <div class="flex items-center">
+              <span class="text-base text-[#666666] ml-2">大模型持续监控，已实时更新:</span>
 
               <span class="text-[16px] font-medium text-[#4080FF]">79天</span>
             </div>

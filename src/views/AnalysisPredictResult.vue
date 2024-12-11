@@ -100,13 +100,39 @@ const renderMarkdown = (content) => {
   return md.render(content)
 }
 
+// 响应式数据
+const seasonalData = ref({
+  gdp: {
+    dates: [],
+    values: [],
+    isPredicted: [],
+    confidenceInterval: []
+  }
+})
+
+const monthlyData = ref({
+  retail: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+  cpi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+  ppi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+  investment: { dates: [], values: [], isPredicted: [], confidenceInterval: [] }
+})
+
+const chartData = ref(null)
+
 // 图表配置
 const chartOption = ref({
   tooltip: {
-    trigger: 'axis'
+    trigger: 'axis',
+    formatter: function(params) {
+      let result = params[0].axisValue + '<br/>'
+      params.forEach(param => {
+        result += param.seriesName + ': ' + param.value + '<br/>'
+      })
+      return result
+    }
   },
   legend: {
-    data: []
+    data: ['实际值', '预测值', '预测区间']
   },
   grid: {
     left: '3%',
@@ -121,8 +147,83 @@ const chartOption = ref({
   yAxis: {
     type: 'value'
   },
-  series: []
+  series: [
+    {
+      name: '实际值',
+      type: 'line',
+      data: []
+    },
+    {
+      name: '预测值',
+      type: 'line',
+      data: []
+    },
+    {
+      name: '预测区间',
+      type: 'line',
+      data: [],
+      lineStyle: { opacity: 0 },
+      areaStyle: {
+        opacity: 0.3
+      }
+    }
+  ]
 })
+
+const updateChartOption = (data) => {
+  if (!data || !data.length || !data[0]) return
+  
+  const currentData = data[0]
+  const dates = currentData.dates || []
+  const values = currentData.values || []
+  const isPredicted = currentData.isPredicted || []
+  const confidenceInterval = currentData.confidenceInterval || []
+
+  // 分离实际值和预测值
+  const actualData = dates.map((date, i) => !isPredicted[i] ? [date, values[i]] : [date, null])
+  const predictedData = dates.map((date, i) => isPredicted[i] ? [date, values[i]] : [date, null])
+  
+  // 处理预测区间
+  const areaData = dates.map((date, i) => {
+    if (isPredicted[i] && confidenceInterval[i]) {
+      return [
+        date,
+        confidenceInterval[i][0],
+        confidenceInterval[i][1]
+      ]
+    }
+    return [date, null, null]
+  })
+
+  chartOption.value = {
+    ...chartOption.value,
+    xAxis: {
+      ...chartOption.value.xAxis,
+      data: dates
+    },
+    series: [
+      {
+        name: '实际值',
+        type: 'line',
+        data: actualData
+      },
+      {
+        name: '预测值',
+        type: 'line',
+        data: predictedData
+      },
+      {
+        name: '预测区间',
+        type: 'line',
+        data: areaData,
+        lineStyle: { opacity: 0 },
+        areaStyle: {
+          opacity: 0.3
+        }
+      }
+    ]
+  }
+}
 
 // 分析结果内容
 const analysisContent = ref('')
@@ -135,45 +236,115 @@ const getAnalysis = async (chartData) => {
     isLoading.value = true
     
     console.log('原始图表数据:', chartData)
+    console.log('图表数据类型:', typeof chartData)
+    console.log('图表数据结构:', Object.keys(chartData))
     
     // 验证数据是否有效
-    if (!chartData.data || !chartData.time || !chartData.data.length || !chartData.time.length) {
+    if (!chartData || typeof chartData !== 'object') {
+      console.error('图表数据不是有效的对象')
       throw new Error('图表数据无效')
     }
 
-    // 获取最近30条数据
-    const startIndex = Math.max(0, chartData.data.length - 30)
-    const recentData = chartData.time.slice(startIndex).map((time, index) => {
-      const dataIndex = startIndex + index
-      const value = chartData.data[dataIndex]
-      return {
-        date: time,
-        value: typeof value === 'number' ? value.toFixed(4) : null
-      }
-    })
+    if (!chartData.dates || !chartData.values || !Array.isArray(chartData.dates) || !Array.isArray(chartData.values)) {
+      console.error('缺少必要的数据数组:', {
+        hasDates: !!chartData.dates,
+        hasValues: !!chartData.values,
+        datesIsArray: Array.isArray(chartData.dates),
+        valuesIsArray: Array.isArray(chartData.values)
+      })
+      throw new Error('图表数据无效')
+    }
+
+    if (chartData.dates.length === 0 || chartData.values.length === 0) {
+      console.error('数据数组为空:', {
+        datesLength: chartData.dates.length,
+        valuesLength: chartData.values.length
+      })
+      throw new Error('图表数据无效')
+    }
+
+    // 获取最近15条数据
+    const startIndex = Math.max(0, chartData.dates.length - 15)
+    const recentData = []
     
-    // 检查是否所有数据都为空
-    const hasValidData = recentData.some(item => item.value !== null)
-    if (!hasValidData) {
+    // 只处理最近15条数据
+    for (let i = startIndex; i < chartData.dates.length; i++) {
+      const value = chartData.values[i]
+      if (value !== null && value !== undefined) {
+        recentData.push({
+          date: chartData.dates[i],
+          value: Number(value).toFixed(2),
+          type: chartData.isPredicted[i] ? '预测值' : '实际值'
+        })
+      }
+    }
+    
+    // 检查是否有有效数据
+    if (recentData.length === 0) {
       analysisContent.value = '**数据无效**\n\n当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。'
       return
     }
     
     console.log('处理后的数据:', recentData)
+
+    // 获取指标名称
+    const indicatorNames = {
+      gdp: 'GDP增速',
+      retail: '社会消费品零售总额',
+      cpi: '居民消费价格指数(CPI)',
+      ppi: '工业生产者出厂价格指数(PPI)',
+      investment: '固定资产投资完成额'
+    }
+    
+    const indicatorId = route.params.indicatorId
+    const indicatorName = indicatorNames[indicatorId] || chartData.name
     
     // 构建prompt
-    const prompt = `你是一名专业的经济分析师。现在，我将提供一个名为【${chartData.name}】的经济数据，该数据集涵盖了从【${recentData[0].date}】至【${recentData[recentData.length-1].date}】的${recentData.length}条数据。在分析这些数据时，你需要重点关注数据的来源、分类、可靠性和时效性。
-以下是你将遵循的分析步骤：
-#趋势和变化分析：
-首先识别数据中的主要趋势和周期性变化。
-#原因和影响因素探究：
-探讨可能影响数据变化的经济、政治和社会因素。
-分析这些因素如何与数据变化相关联，并尝试建立因果关系。
-#综合经济指标分析：
-结合其他相关经济指标，以获得更全面的视角。
-评估这些指标如何相互影响，并共同作用于提供的数据。
-#为了确保分析的时效性和准确性，请使用百度搜索插件来获取最新的经济资讯和数据。确保这些资讯与分析报告的关联性，并在报告中注明来源。引用习近平总书记或政府官方部门在相关领域的最新论述和政策指导。这些论述将作为分析报告的重要论据，以增强报告的权威性和深度。
-以下是具体的数据内容：【${JSON.stringify(recentData)}】`
+    const prompt = `请你以中国宏观经济分析专家的身份，为下列数据编写一份报告，并以"${indicatorName}指标预测依据分析"为标题。报告应简述预测值的合理性与依据。
+
+已知信息：
+• 历史数据（最近15期）：${recentData.filter(d => d.type === '实际值').slice(-15).map(d => d.value).join(', ')}
+• 预测数据：${recentData.filter(d => d.type === '预测值').slice(-15).map(d => d.value).join(', ')}
+• 数据时间范围：${recentData[Math.max(0, recentData.length - 15)].date} 至 ${recentData[recentData.length-1].date}
+
+报告结构如下：
+
+1. 标题："${indicatorName}指标预测依据分析"
+
+2. 宏观背景与政策导向
+- 简述中国当前经济形势
+- 引用习近平总书记及党的重要会议关于经济工作的指导思想
+- 说明政策环境对该指标影响
+
+3. 历史趋势分析
+- 回顾历史数据中该指标的波动与趋势
+- 分析关键转折点及其原因
+
+4. 国际对标与参考
+- 比较国际机构（IMF、世行等）对中国相关指标的预测
+- 说明所处合理区间
+
+5. 支撑预测的关键因素
+- 产业升级对指标的影响
+- 内需外需变化趋势
+- 宏观调控手段的作用
+
+6. 预测值合理性说明
+- 结合官方与国际预测
+- 论证预测值的适度性与合理性
+
+7. 风险与展望
+- 分析潜在不确定性
+- 说明政策应对措施
+- 强调在党的坚强领导下，中国经济的韧性与预测的依据
+
+请以专业、权威的语言撰写报告，确保逻辑清晰、论述有力。重点引用：
+1. 习近平总书记关于经济高质量发展、供给侧结构性改革的论述
+2. 党的重要会议（如中央经济工作会议）对经济工作的指导精神
+3. 国际权威机构对中国经济指标的评估
+4. 中国官方经济数据（国家统计局、人民银行、财政部等）
+
+以下是具体的数据内容：${JSON.stringify(recentData)}`
 
     // 创建新会话
     const convResponse = await fetch(`${API_BASE_URL}/conversation`, {
@@ -208,13 +379,83 @@ const getAnalysis = async (chartData) => {
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
+    let buffer = ''
     let result = ''
+    let isFirstMessage = true
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      result += decoder.decode(value, { stream: true })
-      analysisContent.value = result
+      
+      // Decode the current chunk and add it to the buffer
+      buffer += decoder.decode(value, { stream: true })
+      
+      // Split the buffer by newlines to process each complete message
+      const lines = buffer.split('\n')
+      
+      // Keep the last (potentially incomplete) line in the buffer
+      buffer = lines.pop() || ''
+      
+      // Process each complete line
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          try {
+            const jsonStr = line.slice(5).trim() // Remove 'data: ' prefix
+            if (jsonStr) {
+              const data = JSON.parse(jsonStr)
+              // Check if this is a content message
+              if (data.content && Array.isArray(data.content)) {
+                for (const item of data.content) {
+                  if (item.outputs && item.outputs.text) {
+                    // Skip the first message
+                    if (isFirstMessage) {
+                      isFirstMessage = false
+                      continue
+                    }
+                    
+                    // For thought and text content types, append the text
+                    if (typeof item.outputs.text === 'string') {
+                      result += item.outputs.text
+                    }
+                  }
+                }
+                // Update the display after each processed message
+                analysisContent.value = result
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing stream data:', e)
+          }
+        }
+      }
+    }
+
+    // Process any remaining data in the buffer
+    if (buffer.trim().startsWith('data: ')) {
+      try {
+        const jsonStr = buffer.slice(5).trim()
+        if (jsonStr) {
+          const data = JSON.parse(jsonStr)
+          if (data.content && Array.isArray(data.content)) {
+            for (const item of data.content) {
+              if (item.outputs && item.outputs.text) {
+                // Skip the first message (if it's in the buffer)
+                if (isFirstMessage) {
+                  isFirstMessage = false
+                  continue
+                }
+                
+                if (typeof item.outputs.text === 'string') {
+                  result += item.outputs.text
+                }
+              }
+            }
+            analysisContent.value = result
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing final buffer:', e)
+      }
     }
 
     isLoading.value = false
@@ -226,308 +467,119 @@ const getAnalysis = async (chartData) => {
 }
 
 const route = useRoute()
-const chartIds = computed(() => {
-  const ids = route.query.charts
-  return ids ? ids.split(',') : []
-})
+const indicatorId = computed(() => route.params.indicatorId)
 
-// 根据 chartIds 获取对应的图表数据
-onMounted(() => {
-  const indicatorId = route.params.indicatorId
-  if (chartIds.value.length) {
-    updateChartOption(chartIds.value)
-    loadChartData(chartIds.value)
-  } else if (indicatorId) {
-    loadCSVData(indicatorId)
+// 在组件挂载时加载数据
+onMounted(async () => {
+  if (indicatorId.value) {
+    const data = await loadCSVData(indicatorId.value)
+    if (data) {
+      updateChartOption([data])
+      await getAnalysis(data)
+    }
   }
 })
 
 // Function to load CSV data based on indicatorId
-const chartData = ref({ time: [], data: [] })
 const loadCSVData = async (indicatorId) => {
   try {
     // Load seasonal GDP data
     const gdpResponse = await fetch(new URL(`/data/seasonal_gdp.csv`, window.location.origin))
     const gdpText = await gdpResponse.text()
     const gdpRows = gdpText.replace(/^\ufeff/, '').split('\n').slice(1) // Skip header row
-    seasonalData.value = {
-      gdp: {
+    
+    if (indicatorId === 'gdp') {
+      const data = {
         dates: [],
         values: [],
         isPredicted: [],
         confidenceInterval: []
       }
-    }
-    
-    gdpRows.forEach(row => {
-      if (!row.trim()) return
-      const [date, valueStr] = row.split(',')
-      if (!valueStr) return // Add null check
       
-      // Check for prediction interval (±)
-      if (valueStr.trim().includes('±')) {
-        const [baseValue, interval] = valueStr.trim().split('±')
-        const value = parseFloat(baseValue)
-        const intervalValue = parseFloat(interval)
-        seasonalData.value.gdp.dates.push(date.trim())
-        seasonalData.value.gdp.values.push(value)
-        seasonalData.value.gdp.isPredicted.push(true)
-        seasonalData.value.gdp.confidenceInterval.push([
-          value - intervalValue,
-          value + intervalValue
-        ])
-      } else {
-        seasonalData.value.gdp.dates.push(date.trim())
-        seasonalData.value.gdp.values.push(parseFloat(valueStr))
-        seasonalData.value.gdp.isPredicted.push(false)
-        seasonalData.value.gdp.confidenceInterval.push(null)
-      }
-    })
+      gdpRows.forEach(row => {
+        if (!row.trim()) return
+        const [date, valueStr] = row.split(',')
+        if (!valueStr) return
+        
+        // Check for prediction interval (±)
+        if (valueStr.trim().includes('±')) {
+          const [baseValue, interval] = valueStr.trim().split('±')
+          const value = parseFloat(baseValue)
+          const intervalValue = parseFloat(interval)
+          data.dates.push(date.trim())
+          data.values.push(value)
+          data.isPredicted.push(true)
+          data.confidenceInterval.push([
+            value - intervalValue,
+            value + intervalValue
+          ])
+        } else {
+          data.dates.push(date.trim())
+          data.values.push(parseFloat(valueStr))
+          data.isPredicted.push(false)
+          data.confidenceInterval.push(null)
+        }
+      })
+      
+      chartData.value = data
+      return data
+    }
 
     // Load monthly data
     const monthlyResponse = await fetch(new URL('/data/monthly_data.csv', window.location.origin))
     const monthlyText = await monthlyResponse.text()
     const monthlyRows = monthlyText.replace(/^\ufeff/, '').split('\n').slice(1)
     
-    monthlyData.value = {
-      retail: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
-      cpi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
-      ppi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
-      investment: { dates: [], values: [], isPredicted: [], confidenceInterval: [] }
-    }
+    if (['retail', 'cpi', 'ppi', 'investment'].includes(indicatorId)) {
+      const data = {
+        dates: [],
+        values: [],
+        isPredicted: [],
+        confidenceInterval: []
+      }
 
-    monthlyRows.forEach(row => {
-      if (!row.trim()) return
-      const [date, retail, cpi, ppi, investment] = row.split(',')
-      
-      // Process each indicator
-      const processIndicator = (valueStr, indicator) => {
-        if (!valueStr) return // Add null check
+      const indicatorIndex = {
+        retail: 1,
+        cpi: 2,
+        ppi: 3,
+        investment: 4
+      }[indicatorId]
+
+      monthlyRows.forEach(row => {
+        if (!row.trim()) return
+        const columns = row.split(',')
+        const date = columns[0]
+        const valueStr = columns[indicatorIndex]
+        
+        if (!valueStr) return
         
         if (valueStr.trim().includes('±')) {
           const [baseValue, interval] = valueStr.trim().split('±')
           const value = parseFloat(baseValue)
           const intervalValue = parseFloat(interval)
-          monthlyData.value[indicator].dates.push(date.trim())
-          monthlyData.value[indicator].values.push(value)
-          monthlyData.value[indicator].isPredicted.push(true)
-          monthlyData.value[indicator].confidenceInterval.push([
+          data.dates.push(date.trim())
+          data.values.push(value)
+          data.isPredicted.push(true)
+          data.confidenceInterval.push([
             value - intervalValue,
             value + intervalValue
           ])
         } else {
-          monthlyData.value[indicator].dates.push(date.trim())
-          monthlyData.value[indicator].values.push(parseFloat(valueStr))
-          monthlyData.value[indicator].isPredicted.push(false)
-          monthlyData.value[indicator].confidenceInterval.push(null)
+          data.dates.push(date.trim())
+          data.values.push(parseFloat(valueStr))
+          data.isPredicted.push(false)
+          data.confidenceInterval.push(null)
         }
-      }
+      })
+      
+      chartData.value = data
+      return data
+    }
 
-      processIndicator(retail, 'retail')
-      processIndicator(cpi, 'cpi')
-      processIndicator(ppi, 'ppi')
-      processIndicator(investment, 'investment')
-    })
-
-    console.log('调用getAnalysis函数')
-    console.log('传递的数据:', chartData.value)
-    getAnalysis(chartData.value)
+    return null
   } catch (error) {
     console.error('加载CSV数据出错:', error)
-  }
-}
-
-// 更新图表配置
-const updateChartOption = (selectedCharts) => {
-  // 更新图表逻辑
-}
-
-const generateCombinedChartOption = (indicatorId) => {
-  const data = getIndicatorData(indicatorId)
-  if (!data) return {}
-
-  const indicator = indicators.value.find(item => item.id === indicatorId)
-  const interval = indicator?.type === 'seasonal' ? 3 : 11
-
-  // Handle confidence interval data
-  const upperBound = []
-  const lowerBound = []
-
-  data.values.forEach((value, index) => {
-    if (data.confidenceInterval[index]) {
-      upperBound[index] = data.confidenceInterval[index][1]
-      lowerBound[index] = data.confidenceInterval[index][0]
-    } else {
-      upperBound[index] = null
-      lowerBound[index] = null
-    }
-  })
-
-  return {
-    tooltip: {
-      trigger: 'axis',
-      formatter: function(params) {
-        const dataIndex = params[0].dataIndex
-        const date = data.dates[dataIndex]
-        const value = data.values[dataIndex]
-        const isPredicted = data.isPredicted[dataIndex]
-        const confidenceInterval = data.confidenceInterval[dataIndex]
-        
-        let tooltip = `${date}<br/>`
-        if (isPredicted) {
-          tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}%</span>`
-          if (confidenceInterval) {
-            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}%, ${confidenceInterval[1].toFixed(2)}%]</span>`
-          }
-        } else {
-          tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}%</span>`
-        }
-        return tooltip
-      }
-    },
-    legend: {
-      data: ['历史数据', '预测数据', '预测区间'],
-      top: 0,
-      textStyle: {
-        color: '#666'
-      },
-      selected: {
-        '预测区间': true
-      }
-    },
-    dataZoom: [
-      {
-        type: 'slider',
-        show: true,
-        bottom: 10,
-        height: 20,
-        start: Math.max(0, (data.dates.length - 10) / data.dates.length * 100),
-        end: 100,
-        borderColor: 'transparent',
-        backgroundColor: '#f0f0f0',
-        fillerColor: 'rgba(64, 128, 255, 0.1)',
-        handleStyle: {
-          color: '#4080ff'
-        },
-        moveHandleStyle: {
-          color: '#4080ff'
-        },
-        selectedDataBackground: {
-          lineStyle: {
-            color: '#4080ff'
-          },
-          areaStyle: {
-            color: '#4080ff'
-          }
-        },
-        emphasis: {
-          handleStyle: {
-            color: '#3070ff'
-          }
-        },
-        textStyle: {
-          color: '#666'
-        }
-      },
-      {
-        type: 'inside',
-        start: Math.max(0, (data.dates.length - 10) / data.dates.length * 100),
-        end: 100
-      }
-    ],
-    xAxis: {
-      type: 'category',
-      data: data.dates,
-      axisLabel: {
-        interval: interval,
-        rotate: 45,
-        formatter: function(value) {
-          if (indicator?.type === 'seasonal') {
-            return value
-          } else {
-            return value.replace('M', '/')
-          }
-        }
-      },
-      axisTick: {
-        alignWithLabel: true
-      }
-    },
-    yAxis: {
-      type: 'value',
-      name: '%',
-      nameLocation: 'end'
-    },
-    series: [
-      {
-        name: '历史数据',
-        type: 'line',
-        data: data.values.map((value, index) => 
-          data.isPredicted[index] ? null : value
-        ),
-        itemStyle: {
-          color: '#409EFF'
-        },
-        symbol: 'emptyCircle',
-        symbolSize: 6,
-        lineStyle: {
-          width: 2,
-          color: '#409EFF'
-        },
-        z: 3
-      },
-      {
-        name: '预测数据',
-        type: 'line',
-        data: data.values.map((value, index) => 
-          data.isPredicted[index] ? value : null
-        ),
-        itemStyle: {
-          color: '#F56C6C'
-        },
-        symbol: 'circle',
-        symbolSize: 8,
-        lineStyle: {
-          width: 2,
-          color: '#F56C6C'
-        },
-        z: 4
-      },
-      {
-        name: '预测区间上界',
-        type: 'line',
-        data: upperBound,
-        lineStyle: {
-          type: 'dashed',
-          width: 1,
-          color: '#F56C6C'
-        },
-        symbol: 'none',
-        z: 2
-      },
-      {
-        name: '预测区间下界',
-        type: 'line',
-        data: lowerBound,
-        lineStyle: {
-          type: 'dashed',
-          width: 1,
-          color: '#F56C6C'
-        },
-        symbol: 'none',
-        areaStyle: {
-          color: '#F56C6C',
-          opacity: 0.15
-        },
-        z: 1
-      }
-    ],
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '80px',
-      containLabel: true
-    }
+    return null
   }
 }
 </script>
