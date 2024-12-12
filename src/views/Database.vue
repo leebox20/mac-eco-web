@@ -158,7 +158,7 @@
             <div class="rounded-full bg-gray-100 p-3">
               <SearchIcon class="h-8 w-8 text-gray-400" />
             </div>
-            <p class="text-gray-600">未找���匹配的结果</p>
+            <p class="text-gray-600">未找到匹配的结果</p>
             <button 
               @click="clearSearch"
               class="text-[#4080ff] hover:text-[#3070ff] font-medium"
@@ -417,7 +417,7 @@ function parseCSVData(rows) {
     const indicators = headers.slice(1); // 第一列是时间，其余是指标
     const values = Array(indicators.length).fill().map(() => []);
     
-    // 从第二行开始处理数据
+    // 从第二行开��处理数据
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i].split(',').map(cell => cell.trim());
       
@@ -567,6 +567,52 @@ function removeFromComparison(chart) {
   }
 }
 
+// 将选中的图表数据保存到缓存
+const saveSelectedChartsToCache = (charts) => {
+  try {
+    // 清理之前的数据
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key.startsWith('selectedChart')) {
+        sessionStorage.removeItem(key)
+      }
+    }
+
+    // 保存图表基本信息
+    const chartMeta = charts.map(chart => ({
+      id: chart.id,
+      name: chart.title
+    }))
+    sessionStorage.setItem('selectedChartMeta', JSON.stringify(chartMeta))
+
+    // 分块保存完整的图表数据
+    const chunkSize = 2
+    const chartData = charts.map(chart => ({
+      id: chart.id,
+      time: chart.option.xAxis.data,
+      data: chart.option.series[0].data
+    }))
+
+    for (let i = 0; i < chartData.length; i += chunkSize) {
+      const chunk = chartData.slice(i, i + chunkSize)
+      try {
+        sessionStorage.setItem(`selectedChartData_${Math.floor(i / chunkSize)}`, JSON.stringify(chunk))
+      } catch (e) {
+        console.error(`保存数据块 ${i} 失败:`, e)
+        return false
+      }
+    }
+
+    // 保存块数量
+    sessionStorage.setItem('selectedChartChunks', Math.ceil(chartData.length / chunkSize))
+    return true
+  } catch (error) {
+    console.error('保存选中图表数据失败:', error)
+    return false
+  }
+}
+
+// 修改 handleComparisonClick 函数
 async function handleComparisonClick() {
   if (!isComparisonMode.value) {
     toggleComparisonMode()
@@ -576,7 +622,14 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isComparisonLoading.value = true
-      router.push({
+      
+      // 保存选中的图表数据到 sessionStorage
+      if (!saveSelectedChartsToCache(selectedCharts.value)) {
+        throw new Error('保存图表数据失败')
+      }
+
+      // 导航到分析结果页面
+      await router.push({
         name: 'analysis-result',
         query: {
           charts: selectedCharts.value.map(chart => chart.id).join(',')
@@ -639,7 +692,7 @@ function handlePageJump() {
   jumpPage.value = '';
 }
 
-// 图表配置生成���数
+// 图表配置生成数
 function generateChartOption({ name, unit, time, data }) {
   // Find valid data range
   const validDataPoints = data.map((value, index) => ({ value, index }))
