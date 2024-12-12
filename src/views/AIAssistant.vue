@@ -4,162 +4,176 @@
     
     <main class="bg-background min-h-screen pt-12 pb-12">
       <!-- 左右两栏布局容器 -->
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-8">
-        <!-- 左侧历史消息栏 -->
-        <div class="w-80 bg-white rounded-lg shadow">
-          <h2 class="font-medium text-lg mb-4 bg-gray-50 p-3 text-left border-b border-t border-gray-200 rounded-t-lg">历史消息</h2>
-          <div class="space-y-2 px-2">
-            <!-- 新会话按钮 -->
-            <div 
-              @click="createNewConversation" 
-              class="flex items-center text-black cursor-pointer hover:bg-blue-50 p-4 rounded"
-            >
-              <div class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center mr-2">
-                <i class="fas fa-plus text-sm"></i>
-              </div>
-              <span>新会话</span>
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- 使用 grid 布局实现响应式 -->
+        <div class="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-8">
+          <!-- 左侧历史消息栏 -->
+          <div class="bg-white rounded-lg shadow lg:block">
+            <div class="flex items-center justify-between p-3 bg-gray-50 border-b border-t border-gray-200 rounded-t-lg">
+              <h2 class="font-medium text-lg">历史消息</h2>
+              <!-- 添加一个在移动端显示的关闭按钮 -->
+              <button class="lg:hidden p-2 hover:bg-gray-100 rounded-lg">
+                <XIcon class="w-5 h-5" />
+              </button>
             </div>
-
-            <!-- 历史消息列表 -->
-            <div class="space-y-4 mt-4">
-              <div v-if="conversations.length > 0" class="space-y-2">
-                <div 
-                  v-for="conv in conversations" 
-                  :key="conv.conversation_id"
-                  class="flex items-center justify-between p-2 hover:bg-blue-50 rounded cursor-pointer group"
-                  :class="{ 'bg-blue-50': currentConversationId === conv.conversation_id }"
-                  @click="() => {
-                    currentConversationId = conv.conversation_id;
-                    fetchConversationMessages(conv.conversation_id);
-                  }"
-                >
-                  <div class="flex items-center flex-1">
-                    <div class="w-6 h-6 flex-shrink-0 mr-3">
-                      <i class="far fa-comment-dots" :class="currentConversationId === conv.conversation_id ? 'text-blue-500' : 'text-gray-400'"></i>
-                    </div>
-                    <span class="text-sm text-gray-600 truncate">{{ conv.title || '新对话' }}</span>
-                  </div>
-                  <button 
-                    @click.stop="deleteConversation(conv.conversation_id)"
-                    class="p-1 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <i class="fas fa-trash text-red-500 text-sm"></i>
-                  </button>
+            <div class="space-y-2 px-2">
+              <!-- 新会话按钮 -->
+              <div 
+                @click="createNewConversation" 
+                class="flex items-center text-black cursor-pointer hover:bg-blue-50 p-4 rounded"
+              >
+                <div class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center mr-2">
+                  <i class="fas fa-plus text-sm"></i>
                 </div>
+                <span>新会话</span>
               </div>
-              <div v-else class="text-center text-gray-500 py-4">
-                暂无历史对话
+
+              <!-- 历史消息列表 -->
+              <div class="space-y-4 mt-4">
+                <div v-if="conversations.length > 0" class="space-y-2">
+                  <div 
+                    v-for="conv in conversations" 
+                    :key="conv.conversation_id"
+                    class="flex items-center justify-between p-2 hover:bg-blue-50 rounded cursor-pointer group"
+                    :class="{ 'bg-blue-50': currentConversationId === conv.conversation_id }"
+                    @click="() => {
+                      currentConversationId = conv.conversation_id;
+                      fetchConversationMessages(conv.conversation_id);
+                    }"
+                  >
+                    <div class="flex items-center flex-1">
+                      <div class="w-6 h-6 flex-shrink-0 mr-3">
+                        <i class="far fa-comment-dots" :class="currentConversationId === conv.conversation_id ? 'text-blue-500' : 'text-gray-400'"></i>
+                      </div>
+                      <span class="text-sm text-gray-600 truncate">{{ conv.title || '新对话' }}</span>
+                    </div>
+                    <button 
+                      @click.stop="deleteConversation(conv.conversation_id)"
+                      class="p-1 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <i class="fas fa-trash text-red-500 text-sm"></i>
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="text-center text-gray-500 py-4">
+                  暂无历史对话
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- 右侧主要对话区域 -->
-        <div class="flex-1">
-          <div class="bg-white rounded-lg shadow flex flex-col h-[calc(100vh-8rem)]">
-            <!-- 标题区域 -->
-            <div class="flex items-center mb-8 bg-gray-50 p-3 rounded-t-lg border-b border-t border-gray-200">
-              <img src="@/assets/logo.svg" alt="logo" class="h-12 w-12 mr-3">
-              <div>
-                <h1 class="text-xl font-medium text-gray-900 text-left">社科数智</h1>
-                <p class="text-gray-500 text-sm">Social Science Data Artificial Intelligence (SSDAI)</p>
+          <!-- 右侧主要对话区域 -->
+          <div class="flex-1">
+            <div class="bg-white rounded-lg shadow flex flex-col h-[calc(100vh-8rem)]">
+              <!-- 标题区域添加一个显示历史消息的按钮 -->
+              <div class="flex items-center justify-between mb-8 bg-gray-50 p-3 rounded-t-lg border-b border-t border-gray-200">
+                <div class="flex items-center">
+                  <button class="lg:hidden p-2 mr-2 hover:bg-gray-100 rounded-lg">
+                    <i class="fas fa-bars"></i>
+                  </button>
+                  <img src="@/assets/logo.svg" alt="logo" class="h-12 w-12 mr-3">
+                  <div>
+                    <h1 class="text-xl font-medium text-gray-900 text-left">社科数智</h1>
+                    <p class="text-gray-500 text-sm">Social Science Data Artificial Intelligence (SSDAI)</p>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <!-- 对话区域 -->
-            <div class="flex-1 overflow-y-auto mb-6 space-y-6 p-6">
-              <template v-if="messages.length > 0">
-                <div v-for="(message, index) in messages" :key="index" class="flex items-start space-x-3" :class="{ 'justify-end': message.role === 'user' }">
-                  
+              <!-- 对话区域 -->
+              <div class="flex-1 overflow-y-auto mb-6 space-y-6 p-6">
+                <template v-if="messages.length > 0">
+                  <div v-for="(message, index) in messages" :key="index" class="flex items-start space-x-3" :class="{ 'justify-end': message.role === 'user' }">
+                    
 
-                  
-                  <!-- AI消息 -->
-                  <template v-if="message.role === 'assistant'">
+                    
+                    <!-- AI消息 -->
+                    <template v-if="message.role === 'assistant'">
+                      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-white text-lg"></i>
+                      </div>
+                      <div class="max-w-[80%]">
+                        <div class="bg-blue-50 rounded-lg p-4 inline-block">
+                          <template v-if="message.content || !isLoading">
+                            <div class="text-gray-700 whitespace-pre-wrap break-words text-left prose prose-sm max-w-none prose-p:my-1 prose-li:my-1" v-html="renderMarkdown(message.content)"></div>
+                          </template>
+                          <template v-else>
+                            <div class="flex space-x-2">
+                              <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                              <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                              <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+          
+                    <!-- 用户消息 -->
+                    <template v-else>
+                      <div class="max-w-[80%] ml-auto">
+                        <div class="bg-blue-500 text-white rounded-lg p-4 inline-block">
+                          <p class="whitespace-pre-wrap break-words text-left text-sm">{{ message.content }}</p>
+                        </div>
+                      </div>
+                      <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user text-gray-500"></i>
+                      </div>
+                    </template>
+                  </div>
+
+                </template>
+
+
+                
+                <template v-else>
+                  <!-- 欢迎消息 -->
+                  <div class="flex items-start space-x-3">
                     <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
                       <i class="fas fa-robot text-white text-lg"></i>
                     </div>
-                    <div class="max-w-[80%]">
-                      <div class="bg-blue-50 rounded-lg p-4 inline-block">
-                        <template v-if="message.content || !isLoading">
-                          <div class="text-gray-700 whitespace-pre-wrap break-words text-left prose prose-sm max-w-none prose-p:my-1 prose-li:my-1" v-html="renderMarkdown(message.content)"></div>
-                        </template>
-                        <template v-else>
-                          <div class="flex space-x-2">
-                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                    <div class="flex-1">
+                      <div class="bg-blue-50 rounded-lg p-4">
+                        <p class="text-gray-700">您好，我是您的经济数据分析助手！我可以帮您找到某一年的某个行业经济趋势，与另一年的数据进行对比，并预测未来的经济形势。无论是投资规划、行业研究还是市场分析，我都能为您提供精准洞察。</p>
+                        <p class="text-gray-600 mt-4 mb-2">您可以这样提问：</p>
+                        <div class="space-y-2">
+                          <div 
+                            v-for="(example, i) in ['2020年与2023年的新能源行业趋势对比如何？', '未来三年科技行业的发展前景如何？']" 
+                            :key="i"
+                            @click="inputMessage = example"
+                            class="bg-white p-3 rounded-lg cursor-pointer hover:bg-gray-50"
+                          >
+                            <p class="text-blue-500 text-left">{{ example }}</p>
                           </div>
-                        </template>
-                      </div>
-                    </div>
-                  </template>
-    
-                  <!-- 用户消息 -->
-                  <template v-else>
-                    <div class="max-w-[80%] ml-auto">
-                      <div class="bg-blue-500 text-white rounded-lg p-4 inline-block">
-                        <p class="whitespace-pre-wrap break-words text-left text-sm">{{ message.content }}</p>
-                      </div>
-                    </div>
-                    <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                      <i class="fas fa-user text-gray-500"></i>
-                    </div>
-                  </template>
-                </div>
-
-              </template>
-
-
-              
-              <template v-else>
-                <!-- 欢迎消息 -->
-                <div class="flex items-start space-x-3">
-                  <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-robot text-white text-lg"></i>
-                  </div>
-                  <div class="flex-1">
-                    <div class="bg-blue-50 rounded-lg p-4">
-                      <p class="text-gray-700">您好，我是您的经济数据分析助手！我可以帮您找到某一年的某个行业经济趋势，与另一年的数据进行对比，并预测未来的经济形势。无论是投资规划、行业研究还是市场分析，我都能为您提供精准洞察。</p>
-                      <p class="text-gray-600 mt-4 mb-2">您可以这样提问：</p>
-                      <div class="space-y-2">
-                        <div 
-                          v-for="(example, i) in ['2020年与2023年的新能源行业趋势对比如何？', '未来三年科技行业的发展前景如何？']" 
-                          :key="i"
-                          @click="inputMessage = example"
-                          class="bg-white p-3 rounded-lg cursor-pointer hover:bg-gray-50"
-                        >
-                          <p class="text-blue-500 text-left">{{ example }}</p>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </template>
+                </template>
 
 
 
 
-            </div>
+              </div>
 
-            <!-- 输入区域 -->
-            <div class="border-t p-6">
-              <div class="relative">
-                <textarea
-                  v-model="inputMessage"
-                  @keydown.enter.prevent="sendMessage"
-                  rows="3"
-                  class="w-full px-4 py-2 text-gray-700 bg-white rounded-lg border focus:outline-none focus:border-blue-500"
-                  placeholder="输入您的问题..."
-                ></textarea>
-                <div class="absolute right-2 bottom-2 flex space-x-2">
-                  <button
-                    @click="sendMessage"
-                    :disabled="!inputMessage.trim() || isLoading"
-                    class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <i class="fas fa-paper-plane mr-1"></i>
-                    发送
-                  </button>
+              <!-- 输入区域 -->
+              <div class="border-t p-6">
+                <div class="relative">
+                  <textarea
+                    v-model="inputMessage"
+                    @keydown.enter.prevent="sendMessage"
+                    rows="3"
+                    class="w-full px-4 py-2 text-gray-700 bg-white rounded-lg border focus:outline-none focus:border-blue-500"
+                    placeholder="输入您的问题..."
+                  ></textarea>
+                  <div class="absolute right-2 bottom-2 flex space-x-2">
+                    <button
+                      @click="sendMessage"
+                      :disabled="!inputMessage.trim() || isLoading"
+                      class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <i class="fas fa-paper-plane mr-1"></i>
+                      发送
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

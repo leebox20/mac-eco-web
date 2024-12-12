@@ -158,7 +158,7 @@
             <div class="rounded-full bg-gray-100 p-3">
               <SearchIcon class="h-8 w-8 text-gray-400" />
             </div>
-            <p class="text-gray-600">未找到匹配的结果</p>
+            <p class="text-gray-600">未找���匹配的结果</p>
             <button 
               @click="clearSearch"
               class="text-[#4080ff] hover:text-[#3070ff] font-medium"
@@ -188,7 +188,7 @@
                 <h2 class="text-sm">{{ chart.title }}</h2>
               </div>
               <div class="text-sm text-mute flex items-center space-x-4">
-                <span>{{ chart.source }}</span>
+                <span>数据来源：{{ getFileDisplayName(chart.source) }}</span>
                 <span>{{ chart.code }}</span>
               </div>
             </div>
@@ -251,6 +251,19 @@
               >
                 下一页
               </button>
+              <input 
+                v-model="jumpPage"
+                type="number"
+                placeholder="页码"
+                @keyup.enter="handlePageJump"
+                class="w-16 h-8 pl-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4080ff] bg-[#F2F5F8]/50"
+              />
+              <button 
+                @click="handlePageJump"
+                class="px-3 py-1 rounded-lg bg-[#4080ff] text-white hover:bg-[#3070ff]"
+              >
+                跳转
+              </button>
             </div>
           </div>
         </template>
@@ -305,19 +318,54 @@ const isSearching = ref(false)
 const activeDropdown = ref(null)
 const regions = ref(['北京', '上海', '四川', '云南', '湖北', '贵州'])
 const charts = ref([])
-const pageSize = 10
+const pageSize = ref(20)
 const currentPage = ref(1)
 const totalCharts = ref(0)
 const searchQuery = ref('')
 const searchResults = ref(null)
 const containerRef = ref(null)
+const jumpPage = ref('');
+
+// 添加文件配置
+const dataFiles = [
+  {
+    name: 'DATALF',
+    path: 'assets/DATALF-20241103 - DAY.csv',
+    loaded: false,
+    displayName: '劳动力'
+  },
+  {
+    name: 'DATACY',
+    path: 'assets/DATACY20241103 - month.csv',
+    loaded: false,
+    displayName: '产业'
+  },
+  {
+    name: 'DATADM1',
+    path: 'assets/DATADM-20241103 - 季度.csv',
+    loaded: false,
+    displayName: '对美'
+  },
+  {
+    name: 'DATADM2',
+    path: 'assets/DATADM-20241103 - 月度.csv',
+    loaded: false,
+    displayName: '对美'
+  },
+  {
+    name: 'DATADWL',
+    path: 'assets/DATADWL-241103 - 月度.csv',
+    loaded: false,
+    displayName: '对外'
+  }
+]
 
 // 分页相关计算属性
 const totalPages = computed(() => {
   const total = searchResults.value 
     ? searchResults.value.length 
     : totalCharts.value
-  return Math.ceil(total / pageSize)
+  return Math.ceil(total / pageSize.value)
 })
 
 const displayedPages = computed(() => {
@@ -355,281 +403,134 @@ const displayedPages = computed(() => {
 // 虚拟列表相关
 const displayedCharts = computed(() => {
   const data = searchResults.value || charts.value
-  const start = (currentPage.value - 1) * pageSize
-  const end = start + pageSize
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
   return data.slice(start, end)
 })
 
-// 缓存相关函数
-function saveToCache(rawData) {
+// 处理 CSV 数据
+function parseCSVData(rows) {
   try {
-    const { indicators, timeData, values } = rawData
-    localStorage.setItem('chartMetadata', JSON.stringify({
-      timestamp: Date.now(),
-      indicators,
-      timeData
-    }))
+    // 获取并清理表头
+    const headers = rows[0].split(',').map(h => h.trim());
+    const timeData = [];
+    const indicators = headers.slice(1); // 第一列是时间，其余是指标
+    const values = Array(indicators.length).fill().map(() => []);
     
-    // 将数值数据分块存储，减小每块的大小
-    const chunkSize = 5 // 减小到每块5个指标
-    for (let i = 0; i < indicators.length; i += chunkSize) {
-      const chunk = {}
-      for (let j = i; j < Math.min(i + chunkSize, indicators.length); j++) {
-        // 只存储必要的数据，移除null值
-        chunk[j] = values[j].filter(v => v !== null)
-      }
-      try {
-        localStorage.setItem(`chartValues_${i}`, JSON.stringify(chunk))
-      } catch (e) {
-        console.warn(`无法存储数据块 ${i}, 跳过缓存`)
-        return false
-      }
-    }
-    return true
-  } catch (error) {
-    console.warn('缓存存储失败:', error)
-    clearCache()
-    return false
-  }
-}
-
-function loadFromCache() {
-  try {
-    const metadata = localStorage.getItem('chartMetadata')
-    if (!metadata) return null
-    
-    const { timestamp, indicators, timeData } = JSON.parse(metadata)
-    if (Date.now() - timestamp > 3600000) {
-      clearCache()
-      return null
-    }
-    
-    const values = {}
-    for (let i = 0; i < indicators.length; i += 5) { // 使用相同的块大小
-      const chunk = localStorage.getItem(`chartValues_${i}`)
-      if (!chunk) {
-        clearCache()
-        return null
-      }
-      Object.assign(values, JSON.parse(chunk))
-    }
-    
-    // 恢复完整的数据数组，包括null值
-    indicators.forEach((_, index) => {
-      if (values[index]) {
-        const fullData = new Array(timeData.length).fill(null)
-        let valueIndex = 0
-        for (let i = 0; i < timeData.length && valueIndex < values[index].length; i++) {
-          if (values[index][valueIndex] !== null) {
-            fullData[i] = values[index][valueIndex]
-            valueIndex++
-          }
-        }
-        values[index] = fullData
-      }
-    })
-    
-    return { indicators, timeData, values }
-  } catch (error) {
-    console.warn('缓存加载失败:', error)
-    clearCache()
-    return null
-  }
-}
-
-function clearCache() {
-  try {
-    const metadata = localStorage.getItem('chartMetadata')
-    if (metadata) {
-      const { indicators } = JSON.parse(metadata)
-      for (let i = 0; i < indicators.length; i += 5) {
-        localStorage.removeItem(`chartValues_${i}`)
-      }
-    }
-    localStorage.removeItem('chartMetadata')
-  } catch (error) {
-    console.warn('缓存清理失败:', error)
-  }
-}
-
-// Methods
-async function loadCSVData() {
-  isInitialLoading.value = true
-  try {
-    // 尝试从缓存加载
-    const cachedData = loadFromCache()
-    if (cachedData) {
-      console.log('从缓存加载数据')
-      const { indicators, timeData, values } = cachedData
-      // 生成图表配置
-      charts.value = indicators.map((indicator, index) => {
-        if (!indicator || !values[index]) {
-          return null
-        }
-        
-        return {
-          id: index + 1,
-          title: indicator,
-          source: '数据来源：DATALF',
-          code: `indicator_${index + 1}`,
-          option: generateChartOption({
-            name: indicator,
-            unit: '',
-            time: timeData,
-            data: values[index]
-          })
-        }
-      }).filter(Boolean)
+    // 从第二行开始处理数据
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i].split(',').map(cell => cell.trim());
       
-      totalCharts.value = charts.value.length
-      console.log('成功从缓存加载了', charts.value.length, '个图表')
-      return
-    }
-
-    console.log('开始从服务器加载 CSV 文件...')
-    const csvUrl = `${import.meta.env.BASE_URL}assets/DATALF-20241103 - DAY.csv`
-    console.log('CSV 文件 URL:', csvUrl)
-
-    // 获取文件大小
-    const fileSize = await getFileSize(csvUrl)
-    console.log('CSV 文件大小:', fileSize, 'bytes')
-
-    // 将文件分成5个块
-    const chunkSize = Math.ceil(fileSize / 5)
-    const chunks = []
-
-    // 并行下载所有块
-    const promises = []
-    for (let start = 0; start < fileSize; start += chunkSize) {
-      const end = Math.min(start + chunkSize - 1, fileSize - 1)
-      promises.push(fetchChunk(csvUrl, start, end))
-    }
-
-    console.log('开始并行下载分片...')
-    const chunkResults = await Promise.all(promises)
-    console.log('所有分片下载完成')
-
-    // 合并所有块
-    const csvText = chunkResults.join('')
-    console.log('CSV 文本长度:', csvText.length)
-    
-    if (!csvText || csvText.length === 0) {
-      throw new Error('CSV 文件为空')
-    }
-
-    const rows = csvText.replace(/^\ufeff/, '').split('\n')
-      .map(row => row.trim())
-      .filter(row => row.length > 0)
-      .map(row => {
-        const cells = []
-        let cell = ''
-        let inQuotes = false
-        
-        for (let i = 0; i < row.length; i++) {
-          const char = row[i]
-          if (char === '"') {
-            inQuotes = !inQuotes
-          } else if (char === ',' && !inQuotes) {
-            cells.push(cell.trim())
-            cell = ''
-          } else {
-            cell += char
+      // 检查行是否包含足够的数据
+      if (row.length >= 2) {  // 只要有时间列和至少一个数据列就处理
+        const timeValue = row[0];
+        if (timeValue && timeValue.trim()) {  // 确保时间值存在
+          timeData.push(timeValue);
+          
+          // 处理每个指标的值，如果值不存在就用null
+          for (let j = 1; j < headers.length; j++) {
+            const value = row[j] ? parseFloat(row[j]) : null;
+            values[j-1].push(value);
           }
         }
-        cells.push(cell.trim())
-        return cells
-      })
+      }
+    }
+    
+    // 输出一些调试信息
+    console.log(`处理CSV数据: 发现 ${indicators.length} 个指标, ${timeData.length} 个时间点`);
+    
+    return {
+      indicators,
+      timeData,
+      values
+    };
+  } catch (error) {
+    console.error('解析 CSV 数据时出错:', error);
+    return {
+      indicators: [],
+      timeData: [],
+      values: []
+    };
+  }
+}
+
+// 处理文件数据
+async function processFileData(csvText) {
+  if (!csvText || typeof csvText !== 'string') {
+    console.error('无效的 CSV 数据类型:', typeof csvText);
+    return null;
+  }
+
+  try {
+    // 移除 BOM 标记
+    const cleanText = csvText.replace(/^\uFEFF/, '');
+    
+    // 按行分割，保留非空行
+    const rows = cleanText.split('\n')
+      .map(row => row.trim())
+      .filter(row => row.length > 0);
 
     if (rows.length < 2) {
-      throw new Error('CSV 数据格式不正确：需要至少包含标题行和一行数据')
+      console.error('CSV 数据行数不足');
+      return null;
     }
 
-    const indicators = rows[0].slice(1).filter(Boolean)
-    
-    const timeData = []
-    const values = {}
-    
-    indicators.forEach((_, index) => {
-      values[index] = []
-    })
-    
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i]
-      if (!row[0]) continue
-      
-      timeData.push(row[0])
-      
-      for (let j = 1; j <= indicators.length; j++) {
-        let value = null
-        if (row[j]) {
-          const cleanValue = row[j].replace(/[^\d.-]/g, '')
-          value = cleanValue ? parseFloat(cleanValue) : null
-          if (isNaN(value)) value = null
-        }
-        if (values[j-1]) {
-          values[j-1].push(value)
-        }
-      }
-    }
-
-    saveToCache({ indicators, timeData, values })
-    
-    charts.value = indicators.map((indicator, index) => {
-      if (!indicator || !values[index]) {
-        return null
-      }
-      
-      return {
-        id: index + 1,
-        title: indicator,
-        source: '数据来源：DATALF',
-        code: `indicator_${index + 1}`,
-        option: generateChartOption({
-          name: indicator,
-          unit: '',
-          time: timeData,
-          data: values[index]
-        })
-      }
-    }).filter(Boolean)
-
-    totalCharts.value = charts.value.length
-    console.log('成功加载了', charts.value.length, '个图表')
+    return rows;
   } catch (error) {
-    console.error('加载CSV数据失败:', error)
-    alert('数据加载失败：' + error.message)
-  } finally {
-    isInitialLoading.value = false
+    console.error('处理 CSV 数据时出错:', error);
+    return null;
   }
 }
 
-// 分片下载相关函数
-async function fetchChunk(url, start, end) {
-  const response = await fetch(url, {
-    headers: {
-      Range: `bytes=${start}-${end}`
+// 加载单个文件
+async function loadFile(fileConfig) {
+  console.log(`开始加载 ${fileConfig.name}...`);
+  
+  try {
+    const response = await fetch(fileConfig.path);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  })
-  return response.text()
+    
+    const text = await response.text();
+    const rows = await processFileData(text);
+    if (!rows) {
+      throw new Error('数据处理失败');
+    }
+    
+    const parsedData = parseCSVData(rows);
+    updateChartsWithData(parsedData, fileConfig.name);
+    fileConfig.loaded = true;
+    
+    console.log(`${fileConfig.name} 加载完成`);
+    return true;
+  } catch (error) {
+    console.error(`加载 ${fileConfig.name} 失败:`, error);
+    return false;
+  }
 }
 
-async function getFileSize(url) {
-  const response = await fetch(url, {
-    method: 'HEAD'
-  })
-  return parseInt(response.headers.get('content-length'))
-}
-
-// 监听滚动更新可视区域
-function updateVisibleArea() {
-  if (!containerRef.value) return
-  const scrollTop = containerRef.value.scrollTop
-  // startIndex.value = Math.floor(scrollTop / itemHeight)
+// 添加新的函数用于加载其他文件
+async function loadAdditionalFiles() {
+  for (let i = 0; i < dataFiles.length; i++) {
+    const file = dataFiles[i];
+    if (!file.loaded) {
+      try {
+        await loadFile(file);
+        // 添加延迟
+        if (i < dataFiles.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`加载 ${file.name} 失败:`, error);
+      }
+    }
+  }
 }
 
 // 加载更多数据
 function loadMore() {
-  if (currentPage.value * pageSize < totalCharts.value) {
+  if (currentPage.value * pageSize.value < totalCharts.value) {
     currentPage.value++
   }
 }
@@ -675,9 +576,6 @@ async function handleComparisonClick() {
   if (selectedCharts.value.length >= 2) {
     try {
       isComparisonLoading.value = true
-      if (!saveSelectedChartsToCache(selectedCharts.value)) {
-        throw new Error('保存图表数据失败')
-      }
       router.push({
         name: 'analysis-result',
         query: {
@@ -732,11 +630,20 @@ function clearSearch() {
   currentPage.value = 1
 }
 
-// 图表配置生成函数
+// 处理页码跳转
+function handlePageJump() {
+  const page = parseInt(jumpPage.value);
+  if (page && page >= 1 && page <= totalPages.value) {
+    currentPage.value = page;
+  }
+  jumpPage.value = '';
+}
+
+// 图表配置生成���数
 function generateChartOption({ name, unit, time, data }) {
   // Find valid data range
   const validDataPoints = data.map((value, index) => ({ value, index }))
-    .filter(item => item.value !== null && item.value !== undefined && item.value !== '');
+    .filter(item => item.value !== null && item.value !== undefined && item.value !== '')
   
   if (validDataPoints.length === 0) {
     return {
@@ -758,15 +665,15 @@ function generateChartOption({ name, unit, time, data }) {
           fill: '#999'
         }
       }
-    };
+    }
   }
 
-  const startIndex = validDataPoints[0].index;
-  const endIndex = validDataPoints[validDataPoints.length - 1].index;
+  const startIndex = validDataPoints[0].index
+  const endIndex = validDataPoints[validDataPoints.length - 1].index
   
   // Filter time and data arrays to only include the valid range
-  const filteredTime = time.slice(startIndex, endIndex + 1);
-  const filteredData = data.slice(startIndex, endIndex + 1);
+  const filteredTime = time.slice(startIndex, endIndex + 1)
+  const filteredData = data.slice(startIndex, endIndex + 1)
 
   return {
     tooltip: {
@@ -851,58 +758,80 @@ function generateChartOption({ name, unit, time, data }) {
   }
 }
 
-// 将选中的图表数据保存到缓存
-const saveSelectedChartsToCache = (charts) => {
-  try {
-    // 清理之前的数据
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i)
-      if (key.startsWith('selectedChart')) {
-        sessionStorage.removeItem(key)
-      }
-    }
-
-    // 保存图表基本信息
-    const chartMeta = charts.map(chart => ({
-      id: chart.id,
-      name: chart.title
-    }))
-    sessionStorage.setItem('selectedChartMeta', JSON.stringify(chartMeta))
-
-    // 分块保存数据，每块最多2个图表，减小每块的大小
-    const chunkSize = 2
-    for (let i = 0; i < charts.length; i += chunkSize) {
-      const chunk = charts.slice(i, i + chunkSize).map(chart => ({
-        id: chart.id,
-        time: chart.option.xAxis.data,
-        data: chart.option.series[0].data
-      }))
-      try {
-        sessionStorage.setItem(`selectedChartData_${Math.floor(i / chunkSize)}`, JSON.stringify(chunk))
-      } catch (e) {
-        console.error(`Failed to save chunk ${i}:`, e)
-        return false
-      }
-    }
-
-    // 保存块数量，用于加载时验证
-    sessionStorage.setItem('selectedChartChunks', Math.ceil(charts.length / chunkSize))
-    return true
-  } catch (error) {
-    console.error('保存选中图表数据失败:', error)
-    return false
+// 更新图表数据
+function updateChartsWithData(parsedData, fileName) {
+  const { indicators, timeData, values } = parsedData;
+  
+  if (!indicators || !timeData || !values || 
+      !Array.isArray(indicators) || !Array.isArray(timeData) || !Array.isArray(values)) {
+    console.error('无效的数据格式:', parsedData);
+    return;
   }
+  
+  console.log(`处理文件 ${fileName}: ${indicators.length} 个指标`);
+  
+  const newCharts = indicators.map((indicator, index) => {
+    if (!Array.isArray(values[index])) {
+      console.error(`指标 ${indicator} 的数据无效`);
+      return null;
+    }
+    
+    // 过滤掉全是null的数据系列
+    const hasValidData = values[index].some(v => v !== null);
+    if (!hasValidData) {
+      console.log(`跳过空指标: ${indicator}`);
+      return null;
+    }
+    
+    return {
+      id: `${fileName}_${index + 1}`,
+      title: indicator,
+      source: fileName,
+      code: `${fileName}_${index + 1}`,
+      option: generateChartOption({
+        name: indicator,
+        unit: '',
+        time: timeData,
+        data: values[index]
+      })
+    };
+  }).filter(Boolean);
+  
+  console.log(`${fileName} 生成图表: ${newCharts.length} 个`);
+  
+  charts.value = [...charts.value, ...newCharts];
+  totalCharts.value = charts.value.length;
+}
+
+// 获取文件显示名称
+function getFileDisplayName(source) {
+  if (!source) return '';
+  
+  // 从文件名中提取日期之前的部分
+  const match = source.match(/^(DATA[A-Z]+)-?\d/);
+  if (match) {
+    return match[1];
+  }
+  return source;
 }
 
 // Lifecycle
-onMounted(() => {
-  loadCSVData()
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.group')) {
-      activeDropdown.value = null
-    }
-  })
-})
+onMounted(async () => {
+  isInitialLoading.value = true;
+  try {
+    // 加载主文件
+    await loadFile(dataFiles[0]);
+    
+    // 延迟加载其他文件
+    setTimeout(async () => {
+      await loadAdditionalFiles();
+    }, 1000);
+  } catch (error) {
+    console.error('加载数据失败:', error);
+  } finally {
+    isInitialLoading.value = false;
+  }
+});
 
 onUnmounted(() => {
   document.removeEventListener('click', (e) => {

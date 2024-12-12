@@ -31,12 +31,14 @@
               <h3 class="text-base font-medium mb-6 text-center border-b border-gray-200 p-3">次月/季数据预测:</h3>
               
               <!-- Tabs/Indicators -->
-              <div class="flex space-x-4 mb-6 overflow-x-auto px-6 py-2">
+              <div class="flex flex-wrap gap-4 justify-center">
                 <template v-for="(indicator, index) in economicIndicators" :key="index">
                   <button
                     @click="activeTabIndex = index"
                     :class="[
-                      'px-4 py-3 rounded-lg transition-all duration-200 min-w-[200px] h-[100px] w-[200px]',
+                      'px-3 py-2 rounded-lg transition-all duration-200',
+                      'min-w-[160px] max-w-[200px] h-[90px]',
+                      'flex-grow',
                       activeTabIndex === index 
                         ? 'bg-[#EFF5FF] border border-[#EFF5FF]' 
                         : 'bg-white'
@@ -55,7 +57,6 @@
                       <span class="ml-1 text-gray-600">%</span>
                     </div>
                   </button>
-                  <div v-if="index !== economicIndicators.length - 1" class="h-12 w-[1px] bg-gray-200 self-center"></div>
                 </template>
               </div>
 
@@ -262,7 +263,7 @@ onUnmounted(() => {
 
 const activeTabIndex = ref(0)
 
-// 监听 activeTabIndex 的变化来更新图表
+// 监听 activeTabIndex 的变化来��新图表
 watch(activeTabIndex, (newIndex) => {
   // 这里可以根据选中的指标更新图表数据
   updateChart(economicIndicators[newIndex])

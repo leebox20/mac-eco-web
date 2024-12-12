@@ -103,7 +103,7 @@ const menuItems = [
   {
     path: '/database',
     icon: menuChartImg,
-    label: '数据库'
+    label: '预测数据库'
   },
   {
     path: '/prediction',
