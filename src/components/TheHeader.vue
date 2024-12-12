@@ -8,7 +8,16 @@
           </div>
         </div>
 
-        <div class="flex items-center space-x-8">
+        <div class="flex md:hidden items-center">
+          <button @click="isOpen = !isOpen" class="text-white">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path v-if="!isOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+              <path v-if="isOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="hidden md:flex items-center space-x-8">
           <router-link
             v-for="item in menuItems" 
             :key="item.path"
@@ -37,6 +46,27 @@
           </router-link>
         </div>
       </div>
+
+      <div v-show="isOpen" class="md:hidden">
+        <div class="px-2 pt-2 pb-3 space-y-1">
+          <router-link
+            v-for="item in menuItems"
+            :key="item.path"
+            :to="item.path"
+            class="block px-3 py-2 text-white text-sm"
+            :class="{
+              'opacity-100': $route.path === item.path,
+              'opacity-60': $route.path !== item.path
+            }"
+            @click="isOpen = false"
+          >
+            <div class="flex items-center">
+              <img :src="item.icon" alt="" class="w-5 h-5 mr-2">
+              {{ item.label }}
+            </div>
+          </router-link>
+        </div>
+      </div>
     </div>
   </nav>
 </template>
@@ -49,7 +79,7 @@ import menuChartImg from '../assets/menu-chart.png'
 import menuUserImg from '../assets/menu-user.png'
 import menuLoginImg from '../assets/menu-login.png'
 import headerBgImg from '../assets/home-header-bg.png'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const headerStyle = computed(() => ({
   backgroundColor: '#348fef',
@@ -87,11 +117,12 @@ const menuItems = [
     hasLoginArrow: true
   }
 ]
+
+const isOpen = ref(false)
 </script>
 
 <style scoped>
 .nav-base {
-  /* 移除背景相关样式，现在通过 style 绑定来设置 */
+  position: relative;
 }
-/* 移除之前的router-link-active样式，现在使用动态class控制 */
 </style> 

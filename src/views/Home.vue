@@ -269,11 +269,52 @@ watch(activeTabIndex, (newIndex) => {
 })
 
 // 更新图表的方法
-const updateChart = (indicator) => {
+const updateChart = (index) => {
   if (!chartInstance) return
   
-  const chartData = chartDataSets[activeTabIndex.value] // 根据当前激活的标签索引获取数据
+  let data
+  switch(index) {
+    case 0: // GDP
+      data = seasonalData.value?.gdp
+      break
+    case 1: // 社会消费品零售总额
+      data = monthlyData.value?.retail
+      break
+    case 2: // CPI
+      data = monthlyData.value?.cpi
+      break
+    case 3: // PPI
+      data = monthlyData.value?.ppi
+      break
+    case 4: // 固定资产投资
+      data = monthlyData.value?.investment
+      break
+  }
+
+  if (!data) return
+
   const option = {
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params) {
+        const dataIndex = params[0].dataIndex
+        const date = data.dates[dataIndex]
+        const value = data.values[dataIndex]
+        const isPredicted = data.isPredicted[dataIndex]
+        const confidenceInterval = data.confidenceInterval[dataIndex]
+        
+        let tooltip = `${date}<br/>`
+        if (isPredicted) {
+          tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}%</span>`
+          if (confidenceInterval) {
+            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}%, ${confidenceInterval[1].toFixed(2)}%]</span>`
+          }
+        } else {
+          tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}%</span>`
+        }
+        return tooltip
+      }
+    },
     grid: {
       left: '3%',
       right: '4%',
@@ -282,36 +323,194 @@ const updateChart = (indicator) => {
     },
     xAxis: {
       type: 'category',
-      data: chartData.dates,
-      boundaryGap: false
+      data: data.dates,
+      boundaryGap: false,
+      axisLabel: {
+        interval: index === 0 ? 3 : 11,  // GDP是季度数据，其他是月度数据
+        rotate: 45
+      }
     },
     yAxis: {
       type: 'value',
-      scale: true
+      scale: true,
+      name: '%',
+      nameLocation: 'end'
     },
-    series: [{
-      data: chartData.values,
-      type: 'line',
-      smooth: true,
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{
-          offset: 0,
-          color: 'rgba(64, 128, 255, 0.3)'
-        }, {
-          offset: 1,
-          color: 'rgba(64, 128, 255, 0.1)'
-        }])
+    series: [
+      {
+        name: '历史数据',
+        type: 'line',
+        data: data.values.map((value, index) => 
+          data.isPredicted[index] ? null : value
+        ),
+        itemStyle: {
+          color: '#409EFF'
+        },
+        symbol: 'emptyCircle',
+        symbolSize: 6,
+        lineStyle: {
+          width: 2,
+          color: '#409EFF'
+        },
+        z: 3
       },
-      lineStyle: {
-        color: '#4080FF'
+      {
+        name: '预测数据',
+        type: 'line',
+        data: data.values.map((value, index) => 
+          data.isPredicted[index] ? value : null
+        ),
+        itemStyle: {
+          color: '#F56C6C'
+        },
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: {
+          width: 2,
+          color: '#F56C6C'
+        },
+        z: 4
       },
-      itemStyle: {
-        color: '#4080FF'
+      {
+        name: '预测区间',
+        type: 'line',
+        data: data.confidenceInterval.map((interval, index) => 
+          interval ? interval[1] : null
+        ),
+        lineStyle: {
+          type: 'dashed',
+          width: 1,
+          color: '#F56C6C'
+        },
+        symbol: 'none',
+        z: 2
+      },
+      {
+        type: 'line',
+        data: data.confidenceInterval.map((interval, index) => 
+          interval ? interval[0] : null
+        ),
+        lineStyle: {
+          type: 'dashed',
+          width: 1,
+          color: '#F56C6C'
+        },
+        symbol: 'none',
+        areaStyle: {
+          color: '#F56C6C',
+          opacity: 0.15
+        },
+        z: 1
       }
-    }]
+    ]
   }
   chartInstance.setOption(option)
 }
+
+// 在 script setup 中添加数据结构定义
+const seasonalData = ref(null)
+const monthlyData = ref(null)
+
+// 加载数据的方法
+const loadData = async () => {
+  try {
+    // 加载季度GDP数据
+    const gdpResponse = await fetch(new URL('/data/seasonal_gdp.csv', window.location.origin))
+    const gdpText = await gdpResponse.text()
+    const gdpRows = gdpText.replace(/^\\ufeff/, '').split('\n').slice(1)
+    seasonalData.value = {
+      gdp: {
+        dates: [],
+        values: [],
+        isPredicted: [],
+        confidenceInterval: []
+      }
+    }
+    
+    gdpRows.forEach(row => {
+      if (!row.trim()) return
+      const [date, valueStr] = row.split(',')
+      if (!valueStr) return
+      
+      if (valueStr.trim().includes('±')) {
+        const [baseValue, interval] = valueStr.trim().split('±')
+        const value = parseFloat(baseValue)
+        const intervalValue = parseFloat(interval)
+        seasonalData.value.gdp.dates.push(date.trim())
+        seasonalData.value.gdp.values.push(value)
+        seasonalData.value.gdp.isPredicted.push(true)
+        seasonalData.value.gdp.confidenceInterval.push([
+          value - intervalValue,
+          value + intervalValue
+        ])
+      } else {
+        seasonalData.value.gdp.dates.push(date.trim())
+        seasonalData.value.gdp.values.push(parseFloat(valueStr))
+        seasonalData.value.gdp.isPredicted.push(false)
+        seasonalData.value.gdp.confidenceInterval.push(null)
+      }
+    })
+
+    // 加载月度数据
+    const monthlyResponse = await fetch(new URL('/data/monthly_data.csv', window.location.origin))
+    const monthlyText = await monthlyResponse.text()
+    const monthlyRows = monthlyText.replace(/^\\ufeff/, '').split('\n').slice(1)
+    
+    monthlyData.value = {
+      retail: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+      cpi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+      ppi: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+      investment: { dates: [], values: [], isPredicted: [], confidenceInterval: [] }
+    }
+
+    monthlyRows.forEach(row => {
+      if (!row.trim()) return
+      const [date, retail, cpi, ppi, investment] = row.split(',')
+      
+      const processIndicator = (valueStr, indicator) => {
+        if (!valueStr) return
+        
+        if (valueStr.trim().includes('±')) {
+          const [baseValue, interval] = valueStr.trim().split('±')
+          const value = parseFloat(baseValue)
+          const intervalValue = parseFloat(interval)
+          monthlyData.value[indicator].dates.push(date.trim())
+          monthlyData.value[indicator].values.push(value)
+          monthlyData.value[indicator].isPredicted.push(true)
+          monthlyData.value[indicator].confidenceInterval.push([
+            value - intervalValue,
+            value + intervalValue
+          ])
+        } else {
+          monthlyData.value[indicator].dates.push(date.trim())
+          monthlyData.value[indicator].values.push(parseFloat(valueStr))
+          monthlyData.value[indicator].isPredicted.push(false)
+          monthlyData.value[indicator].confidenceInterval.push(null)
+        }
+      }
+
+      processIndicator(retail, 'retail')
+      processIndicator(cpi, 'cpi')
+      processIndicator(ppi, 'ppi')
+      processIndicator(investment, 'investment')
+    })
+  } catch (error) {
+    console.error('Error loading data:', error)
+  }
+}
+
+// 在组件挂载时加载数据
+onMounted(() => {
+  loadData().then(() => {
+    initChart()
+    updateChart(activeTabIndex.value)
+  })
+})
+
+// 监听标签切换
+watch(activeTabIndex, (newIndex) => {
+  updateChart(newIndex)
+})
 
 </script>
 
