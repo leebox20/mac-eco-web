@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import List, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, BackgroundTasks, Depends, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -123,10 +123,10 @@ app = FastAPI(lifespan=lifespan)
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有源，生产环境中应该设置为具体的域名
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
 # 依赖项
@@ -306,7 +306,6 @@ async def chat(
 ):
     """发送聊天消息到模型"""
     try:
-        logger.info(f"收到聊天请求: {chat_request}")
         data = {
             "app_id": APP_ID,
             "query": chat_request.query,
@@ -316,26 +315,19 @@ async def chat(
         if chat_request.file_ids:
             data["file_ids"] = chat_request.file_ids
         
-        logger.info(f"准备调用API，数据: {data}")
         background_tasks.add_task(save_message, db, chat_request.conversation_id, "user", chat_request.query)
         
         result = await make_api_call("conversation/runs", data=data, timeout=120.0)
-        logger.info(f"API返回结果: {result}")
-        
         if result["status_code"] != 200:
             logger.error(f"API 调用错误: {result['content']}")
             raise HTTPException(status_code=result["status_code"], detail=result["content"])
         
-        assistant_content = result["content"]["answer"]  # 使用 answer 而不是 result
+        assistant_content = result["content"]["result"]
         background_tasks.add_task(save_message, db, chat_request.conversation_id, "assistant", assistant_content)
         
-        return {
-            "result": assistant_content,  # 为了保持前端兼容性，返回 result 字段
-            "conversation_id": result["content"]["conversation_id"]
-        }
+        return result["content"]
     except Exception as e:
         logger.error(f"聊天处理错误: {str(e)}")
-        logger.exception("详细错误信息:")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/conversations")
@@ -349,25 +341,6 @@ async def get_conversation_messages(conversation_id: str, db: Session = Depends(
     """获取特定对话的所有消息"""
     messages = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
     return messages
-
-@app.delete("/conversation/{conversation_id}")
-async def delete_conversation(conversation_id: str, db: Session = Depends(get_db)):
-    """删除对话及其所有消息"""
-    try:
-        # 删除对话相关的所有消息
-        db.query(Message).filter(Message.conversation_id == conversation_id).delete()
-        
-        # 删除对话本身
-        result = db.query(Conversation).filter(Conversation.conversation_id == conversation_id).delete()
-        
-        if result == 0:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        db.commit()
-        return {"status": "success", "message": "Conversation deleted successfully"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -439,14 +412,11 @@ async def speech_to_text(audio_data: bytes):
 
 
 
-class TTSRequest(BaseModel):
-    text: str
-
 @app.post("/tts")
-async def text_to_speech_api(request: TTSRequest = Body(...)):
+async def text_to_speech_api(text: str):
     """文本转语音接口"""
     try:
-        audio_data = await text_to_speech(request.text)
+        audio_data = await text_to_speech(text)
         return StreamingResponse(io.BytesIO(audio_data), media_type="audio/basic")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -466,18 +436,17 @@ async def text_to_speech(text: str):
         "pit": 5,
         "vol": 5,
         "per": 0,
-        "aue": 3  # 改为3, mp3
+        "aue": 4  # 改为4,返回pcm-16k格式
     }
     
     response = requests.get(url, params=params)
     
-    if not response.headers["Content-Type"].startswith("audio/"):
-        error_data = response.json()
-        raise Exception(f"TTS API error: {error_data.get('err_msg', 'Unknown error')}")
-    
-    return response.content
+    if response.headers["Content-Type"].startswith("audio/basic"):
+        return response.content
+    else:
+        raise Exception(f"TTS错误: {response.text}")
     
 if __name__ == "__main__":
     import uvicorn
     logger.info("启动服务器")
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

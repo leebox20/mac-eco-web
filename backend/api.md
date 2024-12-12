@@ -1,157 +1,74 @@
-# 后端API文档
+# 对话 API 前端集成文档
 
-## 基础信息
-- 基础URL: `http://127.0.0.1:8888`
-- 所有POST请求的Content-Type应该设置为 `application/json`，除非特别说明
-- 文件上传接口需要使用 `multipart/form-data`
+## 1. 概述
 
-## API 列表
+本文档描述了对话 API 的主要功能和使用方法。该 API 提供了创建对话、发送消息和接收流式响应的能力，适用于构建实时对话应用。
 
-### 1. 对话管理
+## 2. API 端点
 
-#### 1.1 创建新对话
-- **接口**: `POST /conversation`
-- **请求参数**: 无
-- **响应示例**:
-```json
-{
-    "conversation_id": "conv_123456789",
-    "created_at": "2024-01-20T10:00:00"
-}
+### 2.1 创建新对话
+
+- **端点**: `/conversation`
+- **方法**: POST
+- **描述**: 创建一个新的对话会话
+- **响应**: 返回一个包含 `conversation_id` 的 JSON 对象
+
+### 2.2 发送消息和接收流式响应
+
+- **端点**: `/stream`
+- **方法**: POST
+- **描述**: 发送用户消息并接收流式 AI 响应
+- **请求体**:
+  ```json
+  {
+    "conversation_id": "string",
+    "query": "string",
+    "file_ids": ["string"] // 可选
+  }
+  ```
+- **响应**: 返回一个 text/event-stream 流
+
+### 2.3 获取对话历史
+
+- **端点**: `/conversation/{conversation_id}/messages`
+- **方法**: GET
+- **描述**: 获取特定对话的所有消息历史
+- **响应**: 返回一个消息数组
+
+## 3. 使用流程
+
+1. 创建新对话：调用 `/conversation` 端点获取 `conversation_id`
+2. 发送消息：使用获得的 `conversation_id` 调用 `/stream` 端点
+3. 处理流式响应：解析从 `/stream` 返回的事件流
+4. （可选）获取历史：使用 `/conversation/{conversation_id}/messages` 获取对话历史
+
+## 4. 流式响应处理
+
+前端应该准备好处理来自 `/stream` 端点的服务器发送事件（SSE）。每个事件都包含 AI 响应的一部分。
+
+示例代码（JavaScript）:
+
+```javascript
+const eventSource = new EventSource('/stream');
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  // 处理接收到的数据片段
+  console.log(data.text);
+};
+
+eventSource.onerror = (error) => {
+  console.error('EventSource failed:', error);
+  eventSource.close();
+};
 ```
 
-#### 1.2 获取所有对话
-- **接口**: `GET /conversations`
-- **请求参数**: 无
-- **响应示例**:
-```json
-[
-    {
-        "conversation_id": "conv_123456789",
-        "created_at": "2024-01-20T10:00:00"
-    },
-    {
-        "conversation_id": "conv_987654321",
-        "created_at": "2024-01-20T11:00:00"
-    }
-]
-```
+## 5. 注意事项
 
-#### 1.3 获取对话消息历史
-- **接口**: `GET /conversation/{conversation_id}/messages`
-- **请求参数**: conversation_id (路径参数)
-- **响应示例**:
-```json
-[
-    {
-        "role": "user",
-        "content": "你好",
-        "created_at": "2024-01-20T10:00:00"
-    },
-    {
-        "role": "assistant",
-        "content": "你好！有什么我可以帮你的吗？",
-        "created_at": "2024-01-20T10:00:01"
-    }
-]
-```
+- 处理流式响应时，确保有适当的错误处理机制
+- 大型对话可能会产生大量数据，请考虑如何在客户端有效管理这些数据
 
-### 2. 聊天功能
+## 6. 错误处理
 
-#### 2.1 发送聊天消息（普通模式）
-- **接口**: `POST /chat`
-- **请求参数**:
-```json
-{
-    "query": "你好",
-    "conversation_id": "conv_123456789",
-    "stream": false,
-    "file_ids": ["file_1", "file_2"]  // 可选
-}
-```
-- **响应示例**:
-```json
-{
-    "response": "你好！有什么我可以帮你的吗？",
-    "conversation_id": "conv_123456789"
-}
-```
+API 使用标准的 HTTP 状态码。在处理响应时，请检查状态码并相应地处理错误。
 
-#### 2.2 发送聊天消息（流式响应）
-- **接口**: `POST /stream`
-- **请求参数**:
-```json
-{
-    "conversation_id": "conv_123456789",
-    "query": "你好",
-    "file_ids": ["file_1", "file_2"]  // 可选
-}
-```
-- **响应**: 
-  - Content-Type: text/event-stream
-  - 每个事件包含部分响应文本
-  - 示例：
-```
-data: {"text": "你"}
-data: {"text": "好"}
-data: {"text": "！"}
-data: [DONE]
-```
-
-### 3. 文件处理
-
-#### 3.1 上传文件
-- **接口**: `POST /upload`
-- **请求格式**: multipart/form-data
-- **请求参数**:
-  - file: 文件数据
-  - app_id: 应用ID
-  - conversation_id: 对话ID
-- **响应示例**:
-```json
-{
-    "file_id": "file_123456789",
-    "filename": "example.txt",
-    "status": "success"
-}
-```
-
-### 4. 语音功能
-
-#### 4.1 语音识别（ASR）
-- **接口**: `POST /asr`
-- **请求格式**: multipart/form-data
-- **请求参数**:
-  - file: 音频文件（支持格式：wav, pcm, amr）
-- **响应示例**:
-```json
-{
-    "text": "识别出的文本内容"
-}
-```
-
-#### 4.2 文本转语音（TTS）
-- **接口**: `POST /tts`
-- **请求参数**:
-```json
-{
-    "text": "需要转换为语音的文本"
-}
-```
-- **响应**: 
-  - Content-Type: audio/mp3
-  - 响应体为音频文件数据流
-
-## 错误响应
-所有接口在发生错误时会返回以下格式：
-```json
-{
-    "detail": "错误信息描述"
-}
-```
-
-## 注意事项
-1. 文件上传大小限制为10MB
-2. 语音识别支持的音频格式：wav、pcm、amr
-3. 流式响应需要客户端支持 EventSource 或类似机制
-4. 所有时间戳采用 ISO 8601 格式
