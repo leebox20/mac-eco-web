@@ -209,7 +209,7 @@ import TheFooter from '@/components/TheFooter.vue'
 import axios from 'axios'
 
 // API配置
-const API_BASE_URL = 'http://127.0.0.1:8888'
+const API_BASE_URL = 'http://120.48.150.254:8888'
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,

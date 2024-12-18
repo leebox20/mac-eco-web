@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import List, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, BackgroundTasks, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, BackgroundTasks, Depends, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -17,6 +17,12 @@ import requests
 from fastapi.responses import StreamingResponse
 import io
 from fastapi import HTTPException
+import pandas as pd
+from pathlib import Path
+import numpy as np
+from functools import lru_cache
+import time
+import aiohttp
 
 # 设置日志
 # 设置更详细的日志格式
@@ -63,7 +69,7 @@ async def get_baidu_token():
                 if SCOPE and (SCOPE not in result['scope'].split(' ')):
                     raise HTTPException(status_code=400, detail='scope is not correct')
                 
-                logger.info(f"成功获取 TOKEN: {result['access_token']}; 过期时间(秒): {result['expires_in']}")
+                logger.info(f"成功获取 TOKEN: {result['access_token']}; 期时间(秒): {result['expires_in']}")
                 return result['access_token']
             else:
                 raise HTTPException(status_code=400, detail='API_KEY 或 SECRET_KEY 可能不正确: 在 token 响应中未找到 access_token 或 scope')
@@ -92,6 +98,45 @@ class Message(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# 全局变量存储处理后的数据
+processed_data = {}
+
+async def process_all_data():
+    """在服务器启动时处理所有数据文件"""
+    logger.info("开始处理所有数据文件...")
+    for data_type, file_name in DATA_FILES.items():
+        try:
+            logger.info(f"处理数据文件: {file_name}")
+            df = pd.read_csv(f'data/{file_name}', encoding='utf-8', low_memory=False)  # 添加 low_memory=False
+            
+            # 重命名第一列为 date 并设置为索引
+            df = df.rename(columns={'指标名称': 'date'})
+            df.set_index('date', inplace=True)
+            
+            # 尝试解析日期，指定格式
+            try:
+                df.index = pd.to_datetime(df.index, format='%Y-%m-%d')
+            except ValueError:
+                # 如果指定格式失败，则使用自动推断
+                df.index = pd.to_datetime(df.index)
+            
+            df.sort_index(inplace=True)
+            
+            # 清理数��：移除逗号，转换为数值类型，处理无效值
+            for col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x).replace(',', '') if pd.notnull(x) else x)
+                df[col] = pd.to_numeric(df[col], errors='coerce')  # 使用coerce将无效值转换为NaN
+                # 将无限值替换为 NaN
+                df[col] = df[col].replace([np.inf, -np.inf], np.nan)
+            
+            # 存储处理后的数据
+            processed_data[data_type] = df
+            logger.info(f"成功处理数据文件: {file_name}, 包含 {len(df.columns)} 个指标")
+            
+        except Exception as e:
+            logger.error(f"处理数据文件 {file_name} 时出错: {str(e)}")
+            raise
+
 # 创建一个全局的异步队列
 response_queue = asyncio.Queue()
 
@@ -110,13 +155,80 @@ async def save_responses_worker():
             db.close()
         response_queue.task_done()
 
+async def precache_priority_pages():
+    """预先缓存优先级较高的页面数据"""
+    logger.info("开始预缓存优先页面数据...")
+    start_time = time.time()
+    
+    # 获取总数据量
+    temp_data = get_cached_page_data(1, 9, None)
+    total_items = temp_data["total"]
+    total_pages = (total_items + 8) // 9  # 向上取整
+    
+    # 定义优先缓存的页面
+    priority_pages = (
+        # 前10页
+        list(range(1, 11)) + 
+        # 最后10页
+        list(range(max(11, total_pages - 9), total_pages + 1))
+    )
+    
+    # 预缓存优先页面
+    for page in priority_pages:
+        try:
+            get_cached_page_data(page, 9, None)
+            logger.debug(f"已缓存第 {page} 页")
+        except Exception as e:
+            logger.error(f"缓存第 {page} 页时出错: {str(e)}")
+    
+    end_time = time.time()
+    logger.info(f"优先页面预缓存完成，共 {len(priority_pages)} 页，耗时: {end_time - start_time:.2f}秒")
+
+# 后台缓存任务
+async def background_cache_task():
+    """在后台缓存其他页面"""
+    try:
+        temp_data = get_cached_page_data(1, 9, None)
+        total_items = temp_data["total"]
+        total_pages = (total_items + 8) // 9
+        
+        # 获取所有需要缓存的页面
+        all_pages = set(range(1, total_pages + 1))
+        # 排除已经缓��的优先页面
+        priority_pages = set(list(range(1, 21)) + list(range(max(21, total_pages - 19), total_pages + 1)))
+        remaining_pages = all_pages - priority_pages
+        
+        logger.info(f"开始后台缓存剩余 {len(remaining_pages)} 页...")
+        
+        for page in remaining_pages:
+            try:
+                get_cached_page_data(page, 9, None)
+                if page % 50 == 0:  # 每50页记录次进度
+                    logger.info(f"后台已缓存到第 {page} 页")
+                # 添加小延迟，避免占用太多资源
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.error(f"后台缓存第 {page} 页时出错: {str(e)}")
+                
+        logger.info("后台缓存任务完成")
+        
+    except Exception as e:
+        logger.error(f"后台缓存任务出错: {str(e)}")
+
+# 修改应用启动生命周期
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时运行
+    # 启动时处理所有数据
+    await process_all_data()
+    # 启动优先页面预缓存
+    await precache_priority_pages()
+    # 启动后台缓存任务
+    asyncio.create_task(background_cache_task())
+    # 启动保存响应的worker
     asyncio.create_task(save_responses_worker())
     yield
-    # 关闭时运行
-    # 这里可以添加清理代码，如果需要的话
+    # 关闭时的清理代码
+    processed_data.clear()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -264,7 +376,7 @@ async def process_stream(stream, conversation_id: str):
             logger.debug(f"Received chunk: {chunk[:100]}...")  # Log the first 100 characters of each chunk
             yield chunk  # 返回原始数据块
 
-            # 处理数据块以累积完整响应
+            # 处理数据块��累积完整响应
             if chunk.startswith('data: '):
                 try:
                     data = json.loads(chunk[6:])
@@ -345,7 +457,7 @@ async def get_conversation_messages(conversation_id: str, db: Session = Depends(
 
 
 
-# 在处理 /asr 路由的函数中
+# 在处理 /asr 路的函数中
 @app.post("/asr")
 async def asr(file: UploadFile = File(...)):
     contents = await file.read()
@@ -385,7 +497,7 @@ async def speech_to_text(audio_data: bytes):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()  # 如果响应状态码不是2xx，将引发异常
+            response.raise_for_status()  # 如果响应状态码不是2xx，引发异常
             result = response.json()
             logger.debug(f"Received response from Baidu ASR API: {result}")
 
@@ -446,7 +558,215 @@ async def text_to_speech(text: str):
     else:
         raise Exception(f"TTS错误: {response.text}")
     
+
+# 添加新的数据模型
+class ChartDataResponse(BaseModel):
+    total: int
+    data: List[dict]
+    columns: List[str]
+
+# 定义据文件映射
+DATA_FILES = {
+    'cy': 'DATACY20241103 - month.csv',
+    'dwl': 'DATADWL-241103 - 月度 (1).csv',
+    'dm_quarter': 'DATADM-20241103 - 季度.csv',
+    'dm_month': 'DATADM-20241103 - 月度.csv',
+    'lf': 'DATALF-20241103 - DAY.csv'
+}
+
+# PKL文件缓存路径
+CACHE_DIR = Path("data/cache")
+CACHE_DIR.mkdir(exist_ok=True)
+
+# 添加缓存装饰器用于缓存处理后的分页数据
+@lru_cache(maxsize=1000)  # 保持较大的缓存大小
+def get_cached_page_data(page: int, page_size: int, search: str = None):
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    
+    # 准备所有指标数据
+    all_indicators = []
+    
+    # 遍历所有数据集
+    for data_type, df in processed_data.items():
+        for column in df.columns:
+            # 优化数据处理：一次性处理时间和数值
+            times = df.index.strftime('%Y-%m-%d').tolist()
+            
+            # 处理无效值：将 inf, -inf 和 NaN 转换为 None
+            values = df[column].replace([np.inf, -np.inf], np.nan).tolist()
+            values = [None if pd.isna(x) else float(x) for x in values]  # 确保数值可以被JSON序列化
+            
+            # 创建指标对象
+            indicator = {
+                'id': f"{data_type}_{column}",
+                'title': column,
+                'code': data_type.upper(),
+                'source': '国家统计局',
+                'times': times,
+                'values': values
+            }
+            
+            # 如果有搜索条件，进行过滤
+            if search:
+                if search.lower() not in column.lower() and search.lower() not in data_type.lower():
+                    continue
+            
+            all_indicators.append(indicator)
+    
+    # 计算总数和分页数据
+    total = len(all_indicators)
+    page_data = all_indicators[start_idx:end_idx] if all_indicators else []
+    
+    return {
+        "total": total,
+        "data": page_data,
+        "page": page,
+        "page_size": page_size
+    }
+
+@app.get("/api/chart-data")
+async def get_chart_data(
+    page: int = Query(1, description="页码，从1开始"),
+    page_size: int = Query(9, description="每页数据量"),
+    search: str = Query(None, description="搜索关键词")
+):
+    """获取所有图表数据，支持分页和搜索"""
+    try:
+        # 记录开始时间
+        start_time = time.time()
+        logger.info(f"开始处理图表数据请求: page={page}, page_size={page_size}, search={search}")
+        
+        # 使用缓存获取数据
+        cache_key = f"{page}_{page_size}_{search}"
+        result = get_cached_page_data(page, page_size, search)
+        
+        # 记录处理时间
+        process_time = time.time() - start_time
+        logger.info(f"图表数据处理完成，耗时: {process_time:.3f}秒")
+        
+        # 添加处理时间到响应中
+        result["process_time"] = process_time
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"获取图表数据时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 添加缓存清理接口
+@app.post("/api/clear-chart-cache")
+async def clear_chart_cache():
+    """清理图表数据缓存"""
+    try:
+        get_cached_page_data.cache_clear()
+        return {"message": "Cache cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 添加新的路由处理函数
+@app.post("/api/gdp-analysis")
+async def analyze_gdp(prediction_value: float = Body(...)):
+    async def generate_analysis():
+        apis = [
+            {"name": "GDP数据分析流1", "app_id": "31e13499-bc62-454e-9726-10318869d707"},
+            {"name": "GDP数据分析流2", "app_id": "4ce0fe40-954f-4883-bd37-ce9c3e4a326d"},
+            {"name": "GDP数据分析流3", "app_id": "72cbf1cd-2dac-479d-8000-3e2c5fe04b3a"},
+            {"name": "GDP数据分析流4", "app_id": "01430645-90a5-4032-97e8-b9630e1fc579"}
+        ]
+        
+        async with aiohttp.ClientSession() as session:
+            # 先处理第一个API
+            first_result = await process_api(session, apis[0]["app_id"], prediction_value, apis[0]["name"])
+            yield json.dumps({
+                "type": "api_result",
+                "index": 1,
+                "data": first_result
+            }) + "\n"
+            
+            # 并发处理剩余的API
+            remaining_tasks = [
+                process_api(session, api["app_id"], prediction_value, api["name"])
+                for api in apis[1:]
+            ]
+            
+            # 按顺序获取并返回剩余结果
+            for i, result in enumerate(await asyncio.gather(*remaining_tasks), 2):
+                yield json.dumps({
+                    "type": "api_result",
+                    "index": i,
+                    "data": result
+                }) + "\n"
+
+    return StreamingResponse(
+        generate_analysis(),
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        }
+    )
+
+# 添加辅助函数
+async def get_conversation_id(session, app_id):
+    """获取对话ID"""
+    url = "https://qianfan.baidubce.com/v2/app/conversation"
+    
+    payload = {
+        "app_id": app_id
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
+    }
+    
+    async with session.post(url, json=payload, headers=headers) as response:
+        return await response.json()
+
+async def get_analysis_result(session, app_id, conversation_id, prediction_value):
+    """获取分析结果"""
+    url = "https://qianfan.baidubce.com/v2/app/conversation/runs"
+    
+    payload = {
+        "app_id": app_id,
+        "query": str(prediction_value),
+        "conversation_id": conversation_id,
+        "stream": False
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
+    }
+    
+    async with session.post(url, json=payload, headers=headers) as response:
+        return await response.json()
+
+async def process_api(session, app_id, prediction_value, api_name):
+    """处理单个API的完整流程"""
+    try:
+        # 获取conversation_id
+        conv_result = await get_conversation_id(session, app_id)
+        conversation_id = conv_result.get("conversation_id")
+        
+        # 获取分析结果
+        result = await get_analysis_result(session, app_id, conversation_id, prediction_value)
+        return {
+            "api_name": api_name,
+            "app_id": app_id,
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"处理API {api_name} 时发生错误: {str(e)}")
+        return {
+            "api_name": api_name,
+            "app_id": app_id,
+            "error": str(e)
+        }
+
 if __name__ == "__main__":
     import uvicorn
     logger.info("启动服务器")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8888)

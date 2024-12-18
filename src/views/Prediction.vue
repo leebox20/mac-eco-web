@@ -12,50 +12,75 @@
 
     <!-- Main Content -->
     <main class="container mx-auto py-6 px-4">
-      <div class="flex gap-6 px-10">
+      <div class="flex flex-col lg:flex-row gap-6 px-4 lg:px-10">
         <!-- Left Sidebar - Indicator Selection -->
-        <div class="w-1/4 bg-white rounded-lg shadow p-4">
-          <h3 class="text-lg font-medium text-gray-800 mb-4">指标选择</h3>
-          <div class="space-y-3">
-            <div v-for="indicator in indicators" :key="indicator.id" class="flex items-center">
-              <input
-                type="checkbox"
-                :id="indicator.id"
-                v-model="selectedIndicators"
-                :value="indicator.id"
-                class="w-4 h-4 text-[#4080ff] border-gray-300 rounded focus:ring-[#4080ff]"
-              />
-              <label :for="indicator.id" class="ml-2 text-sm text-gray-700">
-                {{ indicator.name }} ({{ indicator.type === 'seasonal' ? '季度' : '月度' }})
-              </label>
+        <div class="w-full lg:w-1/4">
+          <div class="bg-white rounded-lg shadow">
+            <!-- Card Header -->
+            <div class="px-4 py-3 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-800">指标选择</h3>
+            </div>
+            
+            <!-- Card Body -->
+            <div class="p-4">
+              <div class="space-y-3">
+                <div v-for="indicator in indicators" 
+                     :key="indicator.id" 
+                     class="flex items-center hover:bg-gray-50 p-2 rounded-md transition-colors">
+                  <input
+                    type="checkbox"
+                    :id="indicator.id"
+                    v-model="selectedIndicators"
+                    :value="indicator.id"
+                    class="w-4 h-4 text-[#4080ff] border-gray-300 rounded focus:ring-[#4080ff]"
+                  />
+                  <label :for="indicator.id" class="ml-2 text-sm text-gray-700 cursor-pointer flex-1">
+                    {{ indicator.name }} 
+                    <span class="text-gray-500">({{ indicator.type === 'seasonal' ? '季度' : '月度' }})</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Right Content - Charts -->
-        <div class="w-3/4 space-y-6">
+        <div class="w-full lg:w-3/4 space-y-6">
           <div v-if="selectedIndicators.length === 0" class="bg-white rounded-lg shadow p-8 text-center">
-            <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
+            <arrow-down-wide-narrow class="h-5 w-5 text-gray-200 mx-auto mb-2" />
             <p class="text-gray-600">请在左侧选择需要预测的经济指标</p>
           </div>
           <template v-else>
             <div
               v-for="indicatorId in selectedIndicators"
               :key="indicatorId"
-              class="bg-white rounded-lg shadow p-4 relative"
+              class="bg-white rounded-lg shadow"
             >
-              <h4 class="text-lg font-medium text-gray-800 mb-4">
-                {{ getIndicatorName(indicatorId) }}预测
-              </h4>
-              <div class="h-[400px] relative">
-                <v-chart :option="generateCombinedChartOption(indicatorId)" :init-options="chartConfig" autoresize />
-                <router-link :to="{ name: 'AnalysisPredictResult', params: { indicatorId: indicatorId } }" class="bg-[#4080ff] text-white py-1 px-2 rounded absolute top-2 right-2">
-                  AI解读
+              <!-- Card Header -->
+              <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                <h4 class="text-lg font-medium text-gray-800">
+                  {{ getIndicatorName(indicatorId) }}预测
+                </h4>
+                <router-link 
+                  :to="{ name: 'AnalysisPredictResult', params: { indicatorId: indicatorId } }" 
+                  class="inline-flex items-center px-3 py-1.5 bg-[#348FEF] text-white text-sm rounded-md hover:bg-[#348FEF]/90 transition-colors"
+                >
+                  <span class="mr-1 flex items-center pl-3">AI解读</span>
+                  <chevron-right-icon class="h-4 w-4" />
                 </router-link>
               </div>
-              <div v-if="analysisResults[indicatorId]" class="mt-4">
-                <h5 class="text-lg font-medium text-gray-800 mb-2">分析结果</h5>
-                <div v-html="renderMarkdown(analysisResults[indicatorId])" class="markdown-body"></div>
+
+              <!-- Card Body -->
+              <div class="p-4">
+                <div class="h-[400px]">
+                  <v-chart :option="generateCombinedChartOption(indicatorId)" :init-options="chartConfig" autoresize />
+                </div>
+                
+                <!-- Analysis Results -->
+                <div v-if="analysisResults[indicatorId]" class="mt-6 border-t border-gray-100 pt-4">
+                  <h5 class="text-lg font-medium text-gray-800 mb-3">分析结果</h5>
+                  <div v-html="renderMarkdown(analysisResults[indicatorId])" class="markdown-body text-gray-600"></div>
+                </div>
               </div>
             </div>
           </template>
@@ -361,7 +386,7 @@ const generateCombinedChartOption = (indicatorId) => {
         z: 3
       },
       {
-        name: '预测数据',
+        name: '预测��据',
         type: 'line',
         data: data.values.map((value, index) => 
           data.isPredicted[index] ? value : null

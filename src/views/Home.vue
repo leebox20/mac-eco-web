@@ -86,12 +86,12 @@ import dataComparisonIcon from '@/assets/data-compare.png'
 import * as echarts from 'echarts'
 
 const economicIndicators = [
-  { label: 'GDP:不变价-当季同比', value: '4.67' },
+  { label: 'GDP:不变价-当季同比', value: '5.11' },
   { label: '社会消费品零售总额:当月同比', value: '6.25' },
   { label: 'CPI:当月同比', value: '0.57' },
   { label: 'PPI:全部工业品-当月同比', value: '-2.0' },
   { label: '固定资产投资完成额:累计同比', value: '3.75' },
-]
+] 
 
 
 const scrollTrigger = ref(0)

@@ -4,7 +4,7 @@
     
     <!-- 面包屑导航 -->
 
-    <div class="bg-[#348fef]  py-6 px-4 border-t border-gray-400 border-capacity-40">
+    <div class="bg-[#348fef]  py-6 px-4  border-t border-white border-opacity-10">
       <div class="container mx-auto px-10 flex items-center space-x-2 ">
         <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
         <router-link to="/database" class="text-gray-200 text-sm">

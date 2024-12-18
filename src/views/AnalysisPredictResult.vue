@@ -4,7 +4,7 @@
     
     <!-- 面包屑导航 -->
 
-    <div class="bg-[#348fef]  py-6 px-4 border-t border-gray-400 border-capacity-40">
+    <div class="bg-[#348fef]  py-6 px-4  border-t border-white border-opacity-10">
       <div class="container mx-auto px-10 flex items-center space-x-2 ">
         <arrow-down-wide-narrow class="h-5 w-5 text-gray-200" />
         <router-link to="/prediction" class="text-gray-200 text-sm">
@@ -17,26 +17,178 @@
 
 
     <!-- 主要内容区域 -->
-    <main class="container mx-auto py-6 px-4  ">
-        <!-- 趋势对比图表 -->
-      <div class="rounded-lg  mb-6 px-6">
-        <div class="px-4  py-2 border-b  rounded-t-lg bg-gray shadow">
-          <h2 class="text-sm text-left font-medium">预测走势</h2>
-        </div>
-        <div class="p-4 h-[400px]  bg-white rounded-b-lg shadow">
-          <v-chart class="chart" :option="chartOption" autoresize />
+    <main class="container mx-auto py-6 px-4">
+      <!-- 趋势对比图表 -->
+      <div class="mb-8">
+        <div class="bg-white rounded-lg shadow-sm">
+          <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-lg font-medium text-gray-900">预测走势</h2>
+          </div>
+          <div class="p-6 h-[400px]">
+            <v-chart class="chart" :option="chartOption" autoresize />
+          </div>
         </div>
       </div>
 
-      <!-- 结果分析 -->
-      <div class="rounded-lg  mb-6 px-6">
-        <div class="px-4 py-2 border-b  rounded-t-lg bg-gray shadow">
-            <h2 class="text-sm text-left font-medium">结果分析</h2>
+      <!-- 分析进度区域 -->
+      <div v-if="isLoading" class="bg-white rounded-lg shadow-sm p-6 mb-8">
+        <h3 class="text-lg font-medium text-center text-gray-900 mb-6">
+          AI 正在分析数据
+        </h3>
+        
+        <!-- 分析进度列表 -->
+        <div class="max-w-2xl mx-auto space-y-4">
+          <div v-for="(item, index) in analysisSteps" 
+               :key="index"
+               class="flex items-center space-x-4">
+            <!-- 加载图标 -->
+            <div class="flex-shrink-0">
+              <div v-if="item.status === 'pending'"
+                   class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin">
+              </div>
+              <CheckCircleIcon v-else-if="item.status === 'completed'"
+                            class="w-6 h-6 text-green-500" />
+              <CircleIcon v-else
+                       class="w-6 h-6 text-gray-300" />
+            </div>
+            
+            <!-- 进度文本 -->
+            <div class="flex-grow">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-900">
+                  {{ item.label }}
+                </span>
+                <span v-if="item.progress" 
+                      class="text-sm text-gray-500">
+                  {{ item.progress }}%
+                </span>
+              </div>
+              <!-- 进度条 -->
+              <div v-if="item.status === 'pending'"
+                   class="mt-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500 rounded-full transition-all duration-300"
+                     :style="{ width: `${item.progress}%` }">
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="p-6 space-y-6 bg-white rounded-b-lg shadow text-left">
-          <div v-if="analysisContent" class="prose prose-sm max-w-none" v-html="renderMarkdown(analysisContent)"></div>
-          <div v-if="isLoading" class="text-gray-600">分析中...</div>
-          <div v-if="!analysisContent && !isLoading" class="text-gray-600">暂无数据可供分析。</div>
+
+        <!-- 提示文本 -->
+        <p class="text-sm text-gray-500 text-center mt-6">
+          {{ currentLoadingMessage }}
+        </p>
+      </div>
+
+      <!-- 分析结果区域 -->
+      <div v-show="!isLoading" 
+           class="opacity-0 transition-all duration-500"
+           :class="{ 'opacity-100': !isLoading }">
+        <div class="grid-container">
+          <!-- 左右卡片内容 -->
+          <template v-if="parsedReferences.length && parsedInterpretation.length">
+            <!-- 滑动控制区 -->
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-medium text-gray-900">分析结果</h2>
+              <div class="flex items-center space-x-4">
+                <span class="text-base font-medium text-gray-600">
+                  {{ currentPage + 1 }} / {{ totalPages }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 卡片容器 -->
+            <div class="relative">
+              <!-- 左箭头 -->
+              <button @click="prevPage" 
+                      :disabled="currentPage === 0"
+                      class="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-6 z-10
+                             transition-all duration-200 ease-in-out
+                             disabled:opacity-0 disabled:invisible
+                             hover:scale-110 focus:outline-none">
+                <div class="flex items-center justify-center w-12 h-12 
+                            bg-white rounded-full shadow-lg
+                            text-gray-600 hover:text-blue-600">
+                  <ChevronLeftIcon class="h-8 w-8" />
+                </div>
+              </button>
+
+              <!-- 右箭头 -->
+              <button @click="nextPage" 
+                      :disabled="currentPage >= totalPages - 1"
+                      class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-6 z-10
+                             transition-all duration-200 ease-in-out
+                             disabled:opacity-0 disabled:invisible
+                             hover:scale-110 focus:outline-none">
+                <div class="flex items-center justify-center w-12 h-12 
+                            bg-white rounded-full shadow-lg
+                            text-gray-600 hover:text-blue-600">
+                  <ChevronRightIcon class="h-8 w-8" />
+                </div>
+              </button>
+
+              <!-- 卡片容器 -->
+              <div class="relative overflow-hidden">
+                <div class="flex transition-transform duration-300 ease-in-out"
+                     :style="{ transform: `translateX(-${currentPage * 100}%)` }">
+                  <div v-for="(_, index) in totalPages" 
+                       :key="index"
+                       class="w-full flex-shrink-0 grid grid-cols-2 gap-8 px-4">
+                    <!-- 左侧：相关资料卡片 -->
+                    <div v-if="parsedReferences[index]"
+                         class="bg-white rounded-lg shadow-sm">
+                      <div class="px-6 py-4 border-b border-gray-100">
+                        <h3 class="text-base font-medium text-gray-900">
+                          {{ parsedReferences[index].title }}
+                        </h3>
+                      </div>
+                      <div class="p-6">
+                        <div class="prose prose-sm max-w-none" 
+                             v-html="renderMarkdown(parsedReferences[index].content)">
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 右侧：AI解读卡片 -->
+                    <div v-if="parsedInterpretation[index]"
+                         class="bg-white rounded-lg shadow-sm">
+                      <div class="px-6 py-4 border-b border-gray-100">
+                        <h3 class="text-base font-medium text-gray-900">
+                          {{ getAIInterpretationTitle(parsedInterpretation[index].title) }}
+                        </h3>
+                      </div>
+                      <div class="p-6">
+                        <div class="prose prose-sm max-w-none" 
+                             v-html="renderMarkdown(parsedInterpretation[index].content)">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 改进的页面指示器 -->
+            <div class="flex justify-center items-center space-x-3 mt-8">
+              <div v-for="index in totalPages" 
+                   :key="index"
+                   @click="currentPage = index - 1"
+                   :class="[
+                     'cursor-pointer transition-all duration-200 ease-in-out',
+                     currentPage === index - 1 
+                       ? 'w-8 h-3 bg-blue-600' 
+                       : 'w-3 h-3 bg-gray-300 hover:bg-gray-400',
+                     'rounded-full'
+                   ]"
+                   :title="`第 ${index} 页`">
+              </div>
+            </div>
+
+            <!-- 添加键盘快捷键提示 -->
+            <div class="text-center mt-4 text-sm text-gray-500">
+              使用键盘 ← → 快捷键可快速翻页
+            </div>
+          </template>
         </div>
       </div>
     </main>
@@ -45,7 +197,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -64,7 +216,10 @@ import {
   SearchIcon, 
   ChevronDownIcon,
   BarChartIcon,
-  XIcon
+  XIcon,
+  ChevronLeftIcon,
+  CheckCircleIcon,
+  CircleIcon
 } from 'lucide-vue-next'
 
 import TheHeader from '@/components/TheHeader.vue'
@@ -87,16 +242,28 @@ use([
 const md = new MarkdownIt({
   html: true,
   breaks: true,
-  linkify: true
+  linkify: true,
+  typographer: true
 })
 
-// 自定义渲染规则，减少空行
-md.renderer.rules.paragraph_open = () => '<p class="mb-1">'
-md.renderer.rules.list_item_open = () => '<li class="mb-1">'
+// 自定义渲染规则
+md.renderer.rules.paragraph_open = () => '<p class="mb-4 text-gray-600 leading-relaxed">'
+md.renderer.rules.list_item_open = () => '<li class="mb-2 text-gray-600">'
+md.renderer.rules.heading_open = (tokens, idx) => {
+  const tag = tokens[idx].tag
+  return `<${tag} class="text-gray-900 font-medium mb-4">`
+}
 
 // 解析markdown内容
 const renderMarkdown = (content) => {
   if (!content) return ''
+  
+  content = content.replace(/\^(\[.*?\])+\^/g, (match, p1) => {
+    const citations = p1.replace(/\[(\d+)\]/g, 
+      '<span class="citation-tag">$1</span>')
+    return citations
+  })
+  
   return md.render(content)
 }
 
@@ -179,7 +346,7 @@ const updateChartOption = (data) => {
   const isPredicted = currentData.isPredicted || []
   const confidenceInterval = currentData.confidenceInterval || []
 
-  // 分离实际值和预测值
+  // 分离��际值和预测值
   const actualData = dates.map((date, i) => !isPredicted[i] ? [date, values[i]] : [date, null])
   const predictedData = dates.map((date, i) => isPredicted[i] ? [date, values[i]] : [date, null])
   
@@ -225,251 +392,193 @@ const updateChartOption = (data) => {
   }
 }
 
-// 分析结果内容
-const analysisContent = ref('')
+// 添加 isLoading ref 定义
 const isLoading = ref(false)
-const currentConversationId = ref(null)
 
-// 发送数据到后端API获取分析
+// 分析结果内容
+const analysisContent = ref({
+  aiInterpretation: '',
+  references: ''
+})
+
+// 分析步骤状态
+const analysisSteps = ref([
+  { label: '收集历史数据', status: 'waiting', progress: 0 },
+  { label: '分析宏观趋势', status: 'waiting', progress: 0 },
+  { label: '评估市场影响', status: 'waiting', progress: 0 },
+  { label: '生成预期预测', status: 'waiting', progress: 0 }
+])
+
+// 加载提示消息
+const loadingMessages = [
+  '正在深入分析历史数据模式...',
+  '正在评估宏观经济指标关联性...',
+  '正在计算市场影响因素权重...',
+  '正在生成综合预测结论...',
+  '正在优化分析报告格式...'
+]
+
+const currentLoadingMessage = ref(loadingMessages[0])
+
+// 模拟进度更新
+const simulateProgress = async () => {
+  for (let stepIndex = 0; stepIndex < analysisSteps.value.length; stepIndex++) {
+    const step = analysisSteps.value[stepIndex]
+    step.status = 'pending'
+    currentLoadingMessage.value = loadingMessages[stepIndex]
+    
+    // 模拟该步骤的进度
+    for (let progress = 0; progress <= 100; progress += 5) {
+      step.progress = progress
+      await new Promise(resolve => setTimeout(resolve, 100)) // 每5%增加100ms
+    }
+    
+    step.status = 'completed'
+  }
+  
+  currentLoadingMessage.value = loadingMessages[4]
+  await new Promise(resolve => setTimeout(resolve, 500))
+}
+
+// 修改获取分析方法
 const getAnalysis = async (chartData) => {
   try {
     isLoading.value = true
     
-    console.log('原始图表数据:', chartData)
-    console.log('图表数据类型:', typeof chartData)
-    console.log('图表数据结构:', Object.keys(chartData))
-    
-    // 验证数据是否有效
-    if (!chartData || typeof chartData !== 'object') {
-      console.error('图表数据不是有效的对象')
-      throw new Error('图表数据无效')
-    }
-
-    if (!chartData.dates || !chartData.values || !Array.isArray(chartData.dates) || !Array.isArray(chartData.values)) {
-      console.error('缺少必要的数据数组:', {
-        hasDates: !!chartData.dates,
-        hasValues: !!chartData.values,
-        datesIsArray: Array.isArray(chartData.dates),
-        valuesIsArray: Array.isArray(chartData.values)
-      })
-      throw new Error('图表数据无效')
-    }
-
-    if (chartData.dates.length === 0 || chartData.values.length === 0) {
-      console.error('数据数组为空:', {
-        datesLength: chartData.dates.length,
-        valuesLength: chartData.values.length
-      })
-      throw new Error('图表数据无效')
-    }
-
-    // 获取最近15条数据
-    const startIndex = Math.max(0, chartData.dates.length - 15)
-    const recentData = []
-    
-    // 只处理最近15条数据
-    for (let i = startIndex; i < chartData.dates.length; i++) {
-      const value = chartData.values[i]
-      if (value !== null && value !== undefined) {
-        recentData.push({
-          date: chartData.dates[i],
-          value: Number(value).toFixed(2),
-          type: chartData.isPredicted[i] ? '预测值' : '实际值'
-        })
-      }
-    }
-    
-    // 检查是否有有效数据
-    if (recentData.length === 0) {
-      analysisContent.value = '**数据无效**\n\n当前数据集中所有值均为空，无法进行分析。请选择包含有效数据的时间范围。'
-      return
-    }
-    
-    console.log('处理后的数据:', recentData)
-
-    // 获取指标名称
-    const indicatorNames = {
-      gdp: 'GDP增速',
-      retail: '社会消费品零售总额',
-      cpi: '居民消费价格指数(CPI)',
-      ppi: '工业生产者出厂价格指数(PPI)',
-      investment: '固定资产投资完成额'
-    }
-    
-    const indicatorId = route.params.indicatorId
-    const indicatorName = indicatorNames[indicatorId] || chartData.name
-    
-    // 构建prompt
-    const prompt = `请你以中国宏观经济分析专家的身份，为下列数据编写一份报告，并以"${indicatorName}指标预测依据分析"为标题。报告应简述预测值的合理性与依据。
-
-已知信息：
-• 历史数据（最近15期）：${recentData.filter(d => d.type === '实际值').slice(-15).map(d => d.value).join(', ')}
-• 预测数据：${recentData.filter(d => d.type === '预测值').slice(-15).map(d => d.value).join(', ')}
-• 数据时间范围：${recentData[Math.max(0, recentData.length - 15)].date} 至 ${recentData[recentData.length-1].date}
-
-报告结构如下：
-
-1. 标题："${indicatorName}指标预测依据分析"
-
-2. 宏观背景与政策导向
-- 简述中国当前经济形势
-- 引用习近平总书记及党的重要会议关于经济工作的指导思想
-- 说明政策环境对该指标影响
-
-3. 历史趋势分析
-- 回顾历史数据中该指标的波动与趋势
-- 分析关键转折点及其原因
-
-4. 国际对标与参考
-- 比较国际机构（IMF、世行等）对中国相关指标的预测
-- 说明所处合理区间
-
-5. 支撑预测的关键因素
-- 产业升级对指标的影响
-- 内需外需变化趋势
-- 宏观调控手段的作用
-
-6. 预测值合理性说明
-- 结合官方与国际预测
-- 论证预测值的适度性与合理性
-
-7. 风险与展望
-- 分析潜在不确定性
-- 说明政策应对措施
-- 强调在党的坚强领导下，中国经济的韧性与预测的依据
-
-请以专业、权威的语言撰写报告，确保逻辑清晰、论述有力。重点引用：
-1. 习近平总书记关于经济高质量发展、供给侧结构性改革的论述
-2. 党的重要会议（如中央经济工作会议）对经济工作的指导精神
-3. 国际权威机构对中国经济指标的评估
-4. 中国官方经济数据（国家统计局、人民银行、财政部等）
-
-以下是具体的数据内容：${JSON.stringify(recentData)}`
-
-    // 创建新会话
-    const convResponse = await fetch(`${API_BASE_URL}/conversation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+    // 重置所有步骤状态和内容
+    analysisSteps.value.forEach(step => {
+      step.status = 'waiting'
+      step.progress = 0
     })
     
-    if (!convResponse.ok) {
-      throw new Error('创建会话失败')
+    // 重置分析内容
+    analysisContent.value = {
+      aiInterpretation: '',
+      references: ''
     }
     
-    const convData = await convResponse.json()
-    currentConversationId.value = convData.conversation_id
+    // 开始模拟进度
+    await simulateProgress()
+    
+    // 实际的API调用
+    if (!chartData || !chartData.values || !Array.isArray(chartData.values)) {
+      throw new Error('图表数据无效')
+    }
 
-    // 发送流式请求
-    const response = await fetch(`${API_BASE_URL}/stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        conversation_id: currentConversationId.value,
-        query: prompt
+    // 获取最新的预测值
+    const predictedValues = chartData.values.filter((_, index) => chartData.isPredicted[index])
+    if (!predictedValues.length) {
+      throw new Error('没有找到预测值')
+    }
+    const latestPrediction = predictedValues[0]
+
+    // 定义所有需要请求的分析模块
+    const analysisModules = [
+      { endpoint: 'historical', name: '历史资料' },
+      { endpoint: 'macro', name: '宏观分析' },
+      { endpoint: 'market', name: '市场分析' },
+      { endpoint: 'expectation', name: '预期分析' }
+    ]
+
+    // 并行请求所有分析模块
+    const analysisPromises = analysisModules.map(async module => {
+      const response = await fetch(`${API_BASE_URL}/api/gdp-analysis/${module.endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(latestPrediction)
       })
+
+      if (!response.ok) {
+        throw new Error(`${module.name}请求失败`)
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let moduleContent = {
+        aiInterpretation: [],
+        references: []
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const chunk = decoder.decode(value, { stream: true })
+        try {
+          const data = JSON.parse(chunk)
+          if (data.result) {
+            Object.entries(data.result).forEach(([key, text]) => {
+              if (key.includes('Paragraph')) {
+                moduleContent.aiInterpretation.push(text)
+              } else {
+                moduleContent.references.push(text)
+              }
+            })
+          }
+        } catch (e) {
+          console.error('解析流数据失败:', e)
+        }
+      }
+
+      return { 
+        module: module.endpoint, 
+        content: moduleContent 
+      }
     })
 
-    if (!response.ok) {
-      throw new Error('分析请求失败')
+    // 等待所有分析完成
+    const results = await Promise.all(analysisPromises)
+    
+    // 组合所有分析结果
+    let finalContent = {
+      aiInterpretation: '',
+      references: ''
     }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-    let result = ''
-    let isFirstMessage = true
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      
-      // Decode the current chunk and add it to the buffer
-      buffer += decoder.decode(value, { stream: true })
-      
-      // Split the buffer by newlines to process each complete message
-      const lines = buffer.split('\n')
-      
-      // Keep the last (potentially incomplete) line in the buffer
-      buffer = lines.pop() || ''
-      
-      // Process each complete line
-      for (const line of lines) {
-        if (line.trim().startsWith('data: ')) {
-          try {
-            const jsonStr = line.slice(5).trim() // Remove 'data: ' prefix
-            if (jsonStr) {
-              const data = JSON.parse(jsonStr)
-              // Check if this is a content message
-              if (data.content && Array.isArray(data.content)) {
-                for (const item of data.content) {
-                  if (item.outputs && item.outputs.text) {
-                    // Skip the first message
-                    if (isFirstMessage) {
-                      isFirstMessage = false
-                      continue
-                    }
-                    
-                    // For thought and text content types, append the text
-                    if (typeof item.outputs.text === 'string') {
-                      result += item.outputs.text
-                    }
-                  }
-                }
-                // Update the display after each processed message
-                analysisContent.value = result
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing stream data:', e)
-          }
+    // 确保按固定顺序处理结果
+    analysisModules.forEach(module => {
+      const result = results.find(r => r.module === module.endpoint)
+      if (result) {
+        const moduleName = module.name
+        
+        // 添加AI解读内容
+        if (result.content.aiInterpretation.length > 0) {
+          finalContent.aiInterpretation += `## ${moduleName}\n\n`
+          finalContent.aiInterpretation += result.content.aiInterpretation.join('\n\n') + '\n\n'
+        }
+        
+        // 添加参考资料内容
+        if (result.content.references.length > 0) {
+          finalContent.references += `## ${moduleName}\n\n`
+          finalContent.references += result.content.references.join('\n\n') + '\n\n'
         }
       }
-    }
+    })
 
-    // Process any remaining data in the buffer
-    if (buffer.trim().startsWith('data: ')) {
-      try {
-        const jsonStr = buffer.slice(5).trim()
-        if (jsonStr) {
-          const data = JSON.parse(jsonStr)
-          if (data.content && Array.isArray(data.content)) {
-            for (const item of data.content) {
-              if (item.outputs && item.outputs.text) {
-                // Skip the first message (if it's in the buffer)
-                if (isFirstMessage) {
-                  isFirstMessage = false
-                  continue
-                }
-                
-                if (typeof item.outputs.text === 'string') {
-                  result += item.outputs.text
-                }
-              }
-            }
-            analysisContent.value = result
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing final buffer:', e)
-      }
-    }
+    // 更新分析内容
+    analysisContent.value = finalContent
 
+    // 确保加载动画完全展示完毕后再显示结果
+    await new Promise(resolve => setTimeout(resolve, 500))
     isLoading.value = false
+
   } catch (error) {
     console.error('分析过程出错:', error)
-    analysisContent.value = '**分析失败**\n\n无法获取分析结果，请稍后重试。'
+    await new Promise(resolve => setTimeout(resolve, 500))
     isLoading.value = false
+    analysisContent.value = {
+      aiInterpretation: '**分析失败**\n\n无法获取AI解读结果，请稍后重试。',
+      references: '**分析失败**\n\n无法获取相关资料，请稍后重试。'
+    }
   }
 }
 
 const route = useRoute()
 const indicatorId = computed(() => route.params.indicatorId)
 
-// 在组件挂载时加载数据
+// 在组挂载时加载数据
 onMounted(async () => {
   if (indicatorId.value) {
     const data = await loadCSVData(indicatorId.value)
@@ -478,7 +587,21 @@ onMounted(async () => {
       await getAnalysis(data)
     }
   }
+
+  window.addEventListener('keydown', handleKeyPress)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyPress)
+})
+
+const handleKeyPress = (event) => {
+  if (event.key === 'ArrowLeft') {
+    prevPage()
+  } else if (event.key === 'ArrowRight') {
+    nextPage()
+  }
+}
 
 // Function to load CSV data based on indicatorId
 const loadCSVData = async (indicatorId) => {
@@ -582,11 +705,136 @@ const loadCSVData = async (indicatorId) => {
     return null
   }
 }
+
+// 移除之前的 getReferencesTitle 函数，不再需要
+
+// 移除之前的 parsedReferences 修改，保持原样
+const parsedReferences = computed(() => {
+  if (!analysisContent.value.references) return []
+  return parseContentSections(analysisContent.value.references)
+})
+
+// AI解读部分保持不变
+const parsedInterpretation = computed(() => {
+  if (!analysisContent.value.aiInterpretation) return []
+  return parseContentSections(analysisContent.value.aiInterpretation)
+})
+
+// 解析 markdown 内容中的部分
+function parseContentSections(content) {
+  const sections = []
+  const lines = content.split('\n')
+  let currentSection = null
+
+  lines.forEach(line => {
+    if (line.startsWith('## ')) {
+      if (currentSection) {
+        sections.push(currentSection)
+      }
+      currentSection = {
+        title: line.replace('## ', '').trim(),
+        content: ''
+      }
+    } else if (currentSection) {
+      currentSection.content += line + '\n'
+    }
+  })
+
+  if (currentSection) {
+    sections.push(currentSection)
+  }
+
+  return sections
+}
+
+// 添加 AI 解读标题转换函数
+const getAIInterpretationTitle = (title) => {
+  const titleMap = {
+    '历史分析': 'AI历史解读',
+    '宏观分析': 'AI宏观解读',
+    '市场分析': 'AI市场解读',
+    '预期分析': 'AI预期解读'
+  }
+  return titleMap[title] || `AI${title}`
+}
+
+// 分页控制
+const currentPage = ref(0)
+
+// 计算总页数
+const totalPages = computed(() => {
+  return Math.max(
+    parsedReferences.value.length,
+    parsedInterpretation.value.length
+  )
+})
+
+// 翻页方法
+const nextPage = () => {
+  if (currentPage.value < totalPages.value - 1) {
+    currentPage.value++
+  }
+}
+
+const prevPage = () => {
+  if (currentPage.value > 0) {
+    currentPage.value--
+  }
+}
 </script>
 
 <style scoped>
+/* 所有样式都限定在 analysis-predict-result 类下 */
+.analysis-predict-result {
+  background-color: #fff;
+}
+
+.analysis-predict-result .grid-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  padding: 1rem;
+}
+
+.analysis-predict-result .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.analysis-predict-result .prose {
+  color: #374151;
+  line-height: 1.75;
+  font-size: 0.875rem;
+}
+
 .chart {
   width: 100%;
   height: 100%;
+}
+
+/* 添加淡入效果 */
+.opacity-0 {
+  opacity: 0;
+}
+
+.opacity-100 {
+  opacity: 1;
+}
+
+.transition-all {
+  transition-property: all;
+  transition-duration: 500ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 进度条动画 */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

@@ -123,7 +123,7 @@ app = FastAPI(lifespan=lifespan)
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://120.48.150.254/:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

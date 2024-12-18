@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-[#F2F5F8]">
     <TheHeader />
     
-    <main class="bg-background min-h-screen pt-12 pb-12">
+    <main class=" bg-[#F2F5F8] min-h-screen pt-12 pb-12">
       <!-- 左右两栏布局容器 -->
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- 使用 grid 布局实现响应式 -->
