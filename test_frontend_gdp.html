@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDP数据处理测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .data-item {
+            margin: 5px 0;
+            padding: 8px;
+            background: #f9f9f9;
+            border-radius: 3px;
+        }
+        .historical {
+            color: #409EFF;
+            font-weight: bold;
+        }
+        .predicted {
+            color: #F56C6C;
+            font-weight: bold;
+        }
+        .confidence {
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GDP数据处理测试</h1>
+        <p>当前时间：2025年6月3日</p>
+        
+        <div class="test-section">
+            <div class="test-title">测试数据分类逻辑</div>
+            <div id="classification-test"></div>
+        </div>
+        
+        <div class="test-section">
+            <div class="test-title">模拟API数据处理</div>
+            <div id="api-data-test"></div>
+        </div>
+        
+        <div class="test-section">
+            <div class="test-title">默认数据验证</div>
+            <div id="default-data-test"></div>
+        </div>
+    </div>
+
+    <script>
+        // 模拟前端的数据处理逻辑
+        function testClassificationLogic() {
+            const quarters = ['2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'];
+            const results = [];
+            
+            quarters.forEach(q => {
+                // 使用修改后的逻辑
+                const isPredicted = q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4');
+                const status = isPredicted ? '预测' : '历史';
+                const className = isPredicted ? 'predicted' : 'historical';
+                
+                results.push(`<div class="data-item"><span class="${className}">${q}: ${status}数据</span></div>`);
+            });
+            
+            document.getElementById('classification-test').innerHTML = results.join('');
+        }
+        
+        function testApiDataProcessing() {
+            // 模拟API返回的数据
+            const mockApiData = {
+                quarters: ['2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'],
+                values: [5.3, 4.7, 4.6, 5.4, 5.4, 4.857564, 5.492128, 5.112863],
+                is_predicted: [false, false, false, false, false, true, true, true],
+                confidence_intervals: [null, null, null, 0.02, 0.025, 0.03601684, 0.02774152, 0.04750633]
+            };
+            
+            // 模拟前端处理逻辑
+            const allQuarters = mockApiData.quarters;
+            const allValues = mockApiData.values;
+            const allIsPredicted = mockApiData.is_predicted || allQuarters.map(q => {
+                if (q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4')) {
+                    return true;
+                }
+                return false;
+            });
+            const allConfidenceIntervals = mockApiData.confidence_intervals || allQuarters.map(() => null);
+            
+            const results = [];
+            allQuarters.forEach((quarter, index) => {
+                const value = allValues[index];
+                const isPred = allIsPredicted[index];
+                const interval = allConfidenceIntervals[index];
+                const status = isPred ? '预测' : '历史';
+                const className = isPred ? 'predicted' : 'historical';
+                
+                let intervalText = '';
+                if (interval && interval !== null) {
+                    if (Array.isArray(interval)) {
+                        intervalText = `<br><span class="confidence">置信区间: [${interval[0].toFixed(3)}, ${interval[1].toFixed(3)}]</span>`;
+                    } else {
+                        intervalText = `<br><span class="confidence">置信区间: ±${interval}</span>`;
+                    }
+                }
+                
+                results.push(`<div class="data-item"><span class="${className}">${quarter}: ${value}% (${status})</span>${intervalText}</div>`);
+            });
+            
+            document.getElementById('api-data-test').innerHTML = results.join('');
+        }
+        
+        function testDefaultData() {
+            // 模拟默认数据
+            const defaultData = {
+                dates: ['2023Q3', '2023Q4', '2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'],
+                values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.4, 5.4, 4.857564, 5.492128, 5.112863],
+                isPredicted: [false, false, false, false, false, false, false, true, true, true],
+                confidenceInterval: [null, null, null, null, null, null, null, [4.821547, 4.893581], [5.464386, 5.519870], [5.065357, 5.160369]]
+            };
+            
+            const results = [];
+            defaultData.dates.forEach((quarter, index) => {
+                const value = defaultData.values[index];
+                const isPred = defaultData.isPredicted[index];
+                const interval = defaultData.confidenceInterval[index];
+                const status = isPred ? '预测' : '历史';
+                const className = isPred ? 'predicted' : 'historical';
+                
+                let intervalText = '';
+                if (interval && Array.isArray(interval)) {
+                    intervalText = `<br><span class="confidence">置信区间: [${interval[0].toFixed(3)}, ${interval[1].toFixed(3)}]</span>`;
+                }
+                
+                results.push(`<div class="data-item"><span class="${className}">${quarter}: ${value}% (${status})</span>${intervalText}</div>`);
+            });
+            
+            document.getElementById('default-data-test').innerHTML = results.join('');
+        }
+        
+        // 运行测试
+        testClassificationLogic();
+        testApiDataProcessing();
+        testDefaultData();
+    </script>
+</body>
+</html>

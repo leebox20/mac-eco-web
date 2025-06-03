@@ -275,11 +275,13 @@ const updateChart = (index) => {
   console.log('月度数据:', monthlyData.value)
 
   let data
+  let unit = '%' // 默认单位
 
   // 根据当前选中的指标获取对应数据
   if (index === 0) {
     // GDP数据
     data = seasonalData.value?.gdp
+    unit = '%'
   } else {
     // 月度数据 - 需要根据指标名称映射
     const indicatorName = economicIndicators.value[index]?.title
@@ -301,6 +303,8 @@ const updateChart = (index) => {
     const dataKey = dataMapping[indicatorName]
     if (dataKey) {
       data = monthlyData.value?.[dataKey]
+      // 根据指标设置单位
+      unit = indicatorName === '社会融资规模' ? '万亿元' : '%'
     }
   }
 
@@ -338,12 +342,12 @@ const updateChart = (index) => {
         if (validParam) {
           const displayValue = validParam.value
           if (isPredicted) {
-            tooltip += `<span style="color: #F56C6C">预测值: ${displayValue.toFixed(2)}%</span>`
+            tooltip += `<span style="color: #F56C6C">预测值: ${displayValue.toFixed(2)}${unit}</span>`
             if (confidenceInterval && Array.isArray(confidenceInterval)) {
-              tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}%, ${confidenceInterval[1].toFixed(2)}%]</span>`
+              tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}${unit}, ${confidenceInterval[1].toFixed(2)}${unit}]</span>`
             }
           } else {
-            tooltip += `<span style="color: #409EFF">实际值: ${displayValue.toFixed(2)}%</span>`
+            tooltip += `<span style="color: #409EFF">实际值: ${displayValue.toFixed(2)}${unit}</span>`
           }
         }
 
@@ -387,91 +391,80 @@ const updateChart = (index) => {
     yAxis: {
       type: 'value',
       scale: true,
-      name: '%',
+      name: unit,
       nameLocation: 'end'
     },
-    series: (() => {
-      // 找到历史数据和预测数据的分界点
-      let splitIndex = -1
-      for (let i = 0; i < data.isPredicted.length; i++) {
-        if (data.isPredicted[i]) {
-          splitIndex = i
-          break
-        }
+    series: [
+      // 历史数据线
+      {
+        name: '历史数据',
+        type: 'line',
+        data: data.values.map((value, index) =>
+          !data.isPredicted[index] ? value : null
+        ),
+        itemStyle: {
+          color: '#409EFF'
+        },
+        symbol: 'emptyCircle',
+        symbolSize: 6,
+        lineStyle: {
+          width: 2,
+          color: '#409EFF',
+          type: 'solid'
+        },
+        z: 3,
+        showSymbol: true
+      },
+      // 预测数据线
+      {
+        name: '预测数据',
+        type: 'line',
+        data: data.values.map((value, index) =>
+          data.isPredicted[index] ? value : null
+        ),
+        itemStyle: {
+          color: '#F56C6C'
+        },
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: {
+          width: 2,
+          color: '#F56C6C',
+          type: 'dashed'
+        },
+        z: 4,
+        showSymbol: true
+      },
+      // 连接线（从历史数据最后一点到预测数据第一点）
+      {
+        name: '连接线',
+        type: 'line',
+        data: data.values.map((value, index) => {
+          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
+          // 只在连接点和第一个预测点显示数据
+          if (firstPredictedIndex > 0 && (index === firstPredictedIndex - 1 || index === firstPredictedIndex)) {
+            return value
+          }
+          return null
+        }),
+        itemStyle: {
+          color: '#409EFF'
+        },
+        symbol: 'none', // 不显示符号，避免重复
+        lineStyle: {
+          width: 2,
+          color: '#409EFF',
+          type: 'solid'
+        },
+        z: 2,
+        showSymbol: false
       }
-
-      const series = []
-
-      if (splitIndex > 0) {
-        // 历史数据系列（包含分界点）
-        const historicalData = data.values.map((value, index) =>
-          index <= splitIndex ? value : null
-        )
-        series.push({
-          name: '历史数据',
-          type: 'line',
-          data: historicalData,
-          itemStyle: {
-            color: '#409EFF'
-          },
-          symbol: 'emptyCircle',
-          symbolSize: 6,
-          lineStyle: {
-            width: 2,
-            color: '#409EFF',
-            type: 'solid'
-          },
-          connectNulls: false,
-          z: 3
-        })
-
-        // 预测数据系列（从分界点开始）
-        const predictedData = data.values.map((value, index) =>
-          index >= splitIndex ? value : null
-        )
-        series.push({
-          name: '预测数据',
-          type: 'line',
-          data: predictedData,
-          itemStyle: {
-            color: '#F56C6C'
-          },
-          symbol: 'circle',
-          symbolSize: 8,
-          lineStyle: {
-            width: 2,
-            color: '#F56C6C',
-            type: 'dashed'
-          },
-          connectNulls: false,
-          z: 4
-        })
-      } else {
-        // 如果没有预测数据，只显示历史数据
-        series.push({
-          name: '数据',
-          type: 'line',
-          data: data.values,
-          itemStyle: {
-            color: '#409EFF'
-          },
-          symbol: 'emptyCircle',
-          symbolSize: 6,
-          lineStyle: {
-            width: 2,
-            color: '#409EFF'
-          },
-          z: 3
-        })
-      }
-
-      return series
-    })().concat([
+    ].concat([
       {
         name: '预测区间',
         type: 'line',
         data: data.confidenceInterval.map((interval, index) =>
-          interval ? interval[1] : null
+          (interval && data.isPredicted[index]) ? interval[1] : null
         ),
         lineStyle: {
           type: 'dashed',
@@ -484,7 +477,7 @@ const updateChart = (index) => {
       {
         type: 'line',
         data: data.confidenceInterval.map((interval, index) =>
-          interval ? interval[0] : null
+          (interval && data.isPredicted[index]) ? interval[0] : null
         ),
         lineStyle: {
           type: 'dashed',
@@ -547,7 +540,17 @@ const loadData = async () => {
       // 使用API返回的季度数据，但只显示最近的数据
       const allQuarters = gdpData.quarters
       const allValues = gdpData.values
-      const allIsPredicted = gdpData.is_predicted || allQuarters.map(q => q.includes('2025'))
+
+      // 强制根据当前时间判断，不使用API返回的is_predicted数据
+      // 当前时间：2025年6月3日，所以2025Q2及以后是预测数据（Q2包含6月，从6月开始都是预测）
+      const allIsPredicted = allQuarters.map(q => {
+        // 解析季度，判断是否为预测数据
+        if (q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4')) {
+          return true
+        }
+        return false
+      })
+
       const allConfidenceIntervals = gdpData.confidence_intervals || allQuarters.map(() => null)
 
       // 只显示最近12个季度的数据（3年）
@@ -562,14 +565,15 @@ const loadData = async () => {
       }
 
       console.log(`GDP数据：显示最近${displayCount}个季度，从${gdpQuarterlyData.dates[0]}到${gdpQuarterlyData.dates[gdpQuarterlyData.dates.length-1]}`)
+      console.log('首页GDP isPredicted数据:', allIsPredicted.slice(startIndex))
     } else {
       // 使用默认的季度数据
       console.log('GDP API数据格式不正确，使用默认季度数据')
       gdpQuarterlyData = {
         dates: ['2023Q3', '2023Q4', '2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'],
-        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.0, 5.1, 5.0, 5.1, 5.11],
-        isPredicted: [false, false, false, false, false, false, true, true, true, true],
-        confidenceInterval: [null, null, null, null, null, null, null, null, null, null]
+        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.4, 5.4, 4.857564, 5.492128, 5.112863],
+        isPredicted: [false, false, false, false, false, false, false, true, true, true],
+        confidenceInterval: [null, null, null, null, null, null, null, [4.821547, 4.893581], [5.464386, 5.519870], [5.065357, 5.160369]]
       }
     }
 
@@ -621,7 +625,7 @@ const loadData = async () => {
         const confidenceInterval = []
 
         // 生成2024年1月到2025年12月的数据
-        // 当前时间：2025年6月2日，所以5月及之前是历史数据，6月及之后是预测数据
+        // 当前时间：2025年6月3日，所以5月及之前是历史数据，6月及之后是预测数据
         const currentYear = 2025
         const currentMonth = 5  // 历史数据到5月，6月开始是预测
 
@@ -636,36 +640,91 @@ const loadData = async () => {
 
             // 如果是当前指标的日期，使用实际数据
             if (dateStr === indicator.date) {
-              values.push(indicator.value)
-              isPredicted.push(indicator.is_predicted)
-              // 使用API返回的置信区间
-              confidenceInterval.push(indicator.confidence_interval || null)
-            } else {
-              // 生成基于当前值的历史/预测模拟数据
-              const variation = (Math.random() - 0.5) * 2 // -1 到 1 的变化
-              let simulatedValue = indicator.value + variation
-
-              if (isHistorical) {
-                // 历史数据：添加一些历史趋势
-                const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
-                const trendFactor = monthsFromCurrent * 0.05 // 越早的数据变化稍大
-                simulatedValue += (Math.random() - 0.5) * trendFactor
-                confidenceInterval.push(null)
-              } else {
-                // 预测数据：基于当前值的合理预测
-                const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
-                const predictionVariation = monthsFromCurrent * 0.1 // 预测越远变化越大
-                simulatedValue += (Math.random() - 0.5) * predictionVariation
-
-                // 为预测数据生成置信区间（如果原始数据有的话）
+              // 对社会融资规模特殊处理（转换为万亿元）
+              if (indicator.name === '社会融资规模') {
+                values.push(indicator.value / 10000) // 转换为万亿元
+                // 转换置信区间
                 if (indicator.confidence_interval) {
-                  const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
                   confidenceInterval.push([
-                    simulatedValue - intervalWidth / 2,
-                    simulatedValue + intervalWidth / 2
+                    indicator.confidence_interval[0] / 10000,
+                    indicator.confidence_interval[1] / 10000
                   ])
                 } else {
                   confidenceInterval.push(null)
+                }
+              } else {
+                values.push(indicator.value)
+                // 使用API返回的置信区间
+                confidenceInterval.push(indicator.confidence_interval || null)
+              }
+              // 强制使用我们的时间判断逻辑，不使用API返回的is_predicted
+              isPredicted.push(!isHistorical)
+            } else {
+              // 生成基于当前值的历史/预测模拟数据
+              let simulatedValue
+
+              // 对社会融资规模特殊处理（绝对数值，单位万亿元）
+              if (indicator.name === '社会融资规模') {
+                // 社会融资规模的基准值（万亿元）
+                const baseValue = indicator.value / 10000 // 转换为万亿元
+
+                if (isHistorical) {
+                  // 历史数据：基于月份生成合理的历史值
+                  const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
+                  // 历史数据在基准值附近波动，越早的数据稍微小一些
+                  const historicalTrend = -monthsFromCurrent * 0.02 // 每月递减0.02万亿
+                  const randomVariation = (Math.random() - 0.5) * 0.5 // ±0.25万亿的随机波动
+                  simulatedValue = Math.max(0.5, baseValue + historicalTrend + randomVariation)
+                  confidenceInterval.push(null)
+                } else {
+                  // 预测数据：基于当前值的合理预测
+                  const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
+                  const predictionTrend = monthsFromCurrent * 0.03 // 每月递增0.03万亿
+                  const randomVariation = (Math.random() - 0.5) * 0.3 // ±0.15万亿的随机波动
+                  simulatedValue = baseValue + predictionTrend + randomVariation
+
+                  // 为预测数据生成置信区间
+                  if (indicator.confidence_interval) {
+                    const intervalWidth = (indicator.confidence_interval[1] - indicator.confidence_interval[0]) / 10000
+                    confidenceInterval.push([
+                      simulatedValue - intervalWidth / 2,
+                      simulatedValue + intervalWidth / 2
+                    ])
+                  } else {
+                    // 生成默认置信区间（±5%）
+                    confidenceInterval.push([
+                      simulatedValue * 0.95,
+                      simulatedValue * 1.05
+                    ])
+                  }
+                }
+              } else {
+                // 其他指标的原有逻辑（百分比指标）
+                const variation = (Math.random() - 0.5) * 2 // -1 到 1 的变化
+                simulatedValue = indicator.value + variation
+
+                if (isHistorical) {
+                  // 历史数据：添加一些历史趋势
+                  const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
+                  const trendFactor = monthsFromCurrent * 0.05 // 越早的数据变化稍大
+                  simulatedValue += (Math.random() - 0.5) * trendFactor
+                  confidenceInterval.push(null)
+                } else {
+                  // 预测数据：基于当前值的合理预测
+                  const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
+                  const predictionVariation = monthsFromCurrent * 0.1 // 预测越远变化越大
+                  simulatedValue += (Math.random() - 0.5) * predictionVariation
+
+                  // 为预测数据生成置信区间（如果原始数据有的话）
+                  if (indicator.confidence_interval) {
+                    const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
+                    confidenceInterval.push([
+                      simulatedValue - intervalWidth / 2,
+                      simulatedValue + intervalWidth / 2
+                    ])
+                  } else {
+                    confidenceInterval.push(null)
+                  }
                 }
               }
 

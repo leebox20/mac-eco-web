@@ -186,7 +186,7 @@ use([
 ])
 
 // API 基础URL
-const API_BASE_URL = 'http://localhost:8888'
+const API_BASE_URL = 'http://120.48.150.254:8888'
 
 // 响应式数据
 const searchQuery = ref('')

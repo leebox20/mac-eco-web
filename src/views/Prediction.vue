@@ -182,7 +182,17 @@ const loadData = async () => {
       // 只显示最近24个季度的数据（6年）
       const allQuarters = gdpApiData.quarters
       const allValues = gdpApiData.values
-      const allIsPredicted = gdpApiData.is_predicted || allQuarters.map(q => q.includes('2025'))
+
+      // 强制根据当前时间判断，不使用API返回的is_predicted数据
+      // 当前时间：2025年6月3日，所以2025Q2及以后是预测数据（Q2包含6月，从6月开始都是预测）
+      const allIsPredicted = allQuarters.map(q => {
+        // 解析季度，判断是否为预测数据
+        if (q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4')) {
+          return true
+        }
+        return false
+      })
+
       const allConfidenceIntervals = gdpApiData.confidence_intervals || allQuarters.map(() => null)
 
       const displayCount = Math.min(24, allQuarters.length)
@@ -196,14 +206,15 @@ const loadData = async () => {
       }
 
       console.log(`GDP数据：显示最近${displayCount}个季度`)
+      console.log('GDP isPredicted数据:', allIsPredicted.slice(startIndex))
     } else {
       // 使用默认的季度数据
       console.log('GDP API数据格式不正确，使用默认季度数据')
       gdpData.value = {
         dates: ['2023Q3', '2023Q4', '2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'],
-        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.0, 5.1, 5.0, 5.1, 5.11],
-        isPredicted: [false, false, false, false, false, false, true, true, true, true],
-        confidenceInterval: [null, null, null, null, null, null, null, null, null, null]
+        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.4, 5.4, 4.857564, 5.492128, 5.112863],
+        isPredicted: [false, false, false, false, false, false, false, true, true, true],
+        confidenceInterval: [null, null, null, null, null, null, null, [4.821547, 4.893581], [5.464386, 5.519870], [5.065357, 5.160369]]
       }
     }
 
@@ -234,34 +245,89 @@ const loadData = async () => {
 
           // 如果是当前指标的日期，使用实际数据
           if (dateStr === indicator.date) {
-            values.push(indicator.value)
-            isPredicted.push(indicator.is_predicted)
-            // 使用API返回的置信区间
-            confidenceInterval.push(indicator.confidence_interval || null)
-          } else {
-            // 生成基于当前值的模拟数据
-            const variation = (Math.random() - 0.5) * 2
-            let simulatedValue = indicator.value + variation
-
-            if (isHistorical) {
-              const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
-              const trendFactor = monthsFromCurrent * 0.05
-              simulatedValue += (Math.random() - 0.5) * trendFactor
-              confidenceInterval.push(null)
-            } else {
-              const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
-              const predictionVariation = monthsFromCurrent * 0.1
-              simulatedValue += (Math.random() - 0.5) * predictionVariation
-
-              // 为预测数据生成置信区间（如果原始数据有的话）
+            // 对社会融资规模特殊处理（转换为万亿元）
+            if (indicator.name === '社会融资规模') {
+              values.push(indicator.value / 10000) // 转换为万亿元
+              // 转换置信区间
               if (indicator.confidence_interval) {
-                const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
                 confidenceInterval.push([
-                  simulatedValue - intervalWidth / 2,
-                  simulatedValue + intervalWidth / 2
+                  indicator.confidence_interval[0] / 10000,
+                  indicator.confidence_interval[1] / 10000
                 ])
               } else {
                 confidenceInterval.push(null)
+              }
+            } else {
+              values.push(indicator.value)
+              // 使用API返回的置信区间
+              confidenceInterval.push(indicator.confidence_interval || null)
+            }
+            // 强制使用我们的时间判断逻辑，不使用API返回的is_predicted
+            isPredicted.push(!isHistorical)
+          } else {
+            // 生成基于当前值的模拟数据
+            let simulatedValue
+
+            // 对社会融资规模特殊处理（绝对数值，单位万亿元）
+            if (indicator.name === '社会融资规模') {
+              // 社会融资规模的基准值（万亿元）
+              const baseValue = indicator.value / 10000 // 转换为万亿元
+
+              if (isHistorical) {
+                // 历史数据：基于月份生成合理的历史值
+                const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
+                // 历史数据在基准值附近波动，越早的数据稍微小一些
+                const historicalTrend = -monthsFromCurrent * 0.02 // 每月递减0.02万亿
+                const randomVariation = (Math.random() - 0.5) * 0.5 // ±0.25万亿的随机波动
+                simulatedValue = Math.max(0.5, baseValue + historicalTrend + randomVariation)
+                confidenceInterval.push(null)
+              } else {
+                // 预测数据：基于当前值的合理预测
+                const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
+                const predictionTrend = monthsFromCurrent * 0.03 // 每月递增0.03万亿
+                const randomVariation = (Math.random() - 0.5) * 0.3 // ±0.15万亿的随机波动
+                simulatedValue = baseValue + predictionTrend + randomVariation
+
+                // 为预测数据生成置信区间
+                if (indicator.confidence_interval) {
+                  const intervalWidth = (indicator.confidence_interval[1] - indicator.confidence_interval[0]) / 10000
+                  confidenceInterval.push([
+                    simulatedValue - intervalWidth / 2,
+                    simulatedValue + intervalWidth / 2
+                  ])
+                } else {
+                  // 生成默认置信区间（±5%）
+                  confidenceInterval.push([
+                    simulatedValue * 0.95,
+                    simulatedValue * 1.05
+                  ])
+                }
+              }
+            } else {
+              // 其他指标的原有逻辑（百分比指标）
+              const variation = (Math.random() - 0.5) * 2
+              simulatedValue = indicator.value + variation
+
+              if (isHistorical) {
+                const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
+                const trendFactor = monthsFromCurrent * 0.05
+                simulatedValue += (Math.random() - 0.5) * trendFactor
+                confidenceInterval.push(null)
+              } else {
+                const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
+                const predictionVariation = monthsFromCurrent * 0.1
+                simulatedValue += (Math.random() - 0.5) * predictionVariation
+
+                // 为预测数据生成置信区间（如果原始数据有的话）
+                if (indicator.confidence_interval) {
+                  const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
+                  confidenceInterval.push([
+                    simulatedValue - intervalWidth / 2,
+                    simulatedValue + intervalWidth / 2
+                  ])
+                } else {
+                  confidenceInterval.push(null)
+                }
               }
             }
 
@@ -341,12 +407,12 @@ const generateCombinedChartOption = (indicatorId) => {
         
         let tooltip = `${date}<br/>`
         if (isPredicted) {
-          tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}%</span>`
+          tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}${data.unit}</span>`
           if (confidenceInterval) {
-            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}%, ${confidenceInterval[1].toFixed(2)}%]</span>`
+            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}${data.unit}, ${confidenceInterval[1].toFixed(2)}${data.unit}]</span>`
           }
         } else {
-          tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}%</span>`
+          tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}${data.unit}</span>`
         }
         return tooltip
       }
@@ -421,7 +487,7 @@ const generateCombinedChartOption = (indicatorId) => {
     },
     yAxis: {
       type: 'value',
-      name: '%',
+      name: data.unit || '%',
       nameLocation: 'end'
     },
     series: [
@@ -511,10 +577,14 @@ const generateGDPChartOption = () => {
         const date = data.dates[dataIndex]
         const value = data.values[dataIndex]
         const isPredicted = data.isPredicted[dataIndex]
+        const confidenceInterval = data.confidenceInterval[dataIndex]
 
         let tooltip = `${date}<br/>`
         if (isPredicted) {
           tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}%</span>`
+          if (confidenceInterval) {
+            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}%, ${confidenceInterval[1].toFixed(2)}%]</span>`
+          }
         } else {
           tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}%</span>`
         }
@@ -522,7 +592,7 @@ const generateGDPChartOption = () => {
       }
     },
     legend: {
-      data: ['历史数据', '预测数据'],
+      data: ['历史数据', '预测数据', '预测区间'],
       top: 0,
       textStyle: {
         color: '#666'
@@ -585,56 +655,38 @@ const generateGDPChartOption = () => {
       nameLocation: 'end'
     },
     series: [
+      // 历史数据线
       {
-        name: '数据线',
+        name: '历史数据',
         type: 'line',
-        data: data.values,
+        data: data.values.map((value, index) =>
+          !data.isPredicted[index] ? value : null
+        ),
         itemStyle: {
-          color: function(params) {
-            return data.isPredicted[params.dataIndex] ? '#F56C6C' : '#409EFF'
-          }
+          color: '#409EFF'
         },
-        symbol: function(value, params) {
-          return data.isPredicted[params.dataIndex] ? 'circle' : 'emptyCircle'
-        },
-        symbolSize: function(value, params) {
-          return data.isPredicted[params.dataIndex] ? 8 : 6
-        },
+        symbol: 'emptyCircle',
+        symbolSize: 6,
         lineStyle: {
           width: 2,
-          color: '#409EFF'
+          color: '#409EFF',
+          type: 'solid'
         },
         z: 3,
         showSymbol: true
       },
+      // 预测数据线
       {
-        name: '预测段',
+        name: '预测数据',
         type: 'line',
-        data: data.values.map((value, index) => {
-          // 找到第一个预测数据点的前一个点，确保连接
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && index === firstPredictedIndex - 1) {
-            return value // 包含连接点
-          }
-          return data.isPredicted[index] ? value : null
-        }),
+        data: data.values.map((value, index) =>
+          data.isPredicted[index] ? value : null
+        ),
         itemStyle: {
           color: '#F56C6C'
         },
-        symbol: function(value, params) {
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && params.dataIndex === firstPredictedIndex - 1) {
-            return 'emptyCircle' // 连接点使用空心圆
-          }
-          return data.isPredicted[params.dataIndex] ? 'circle' : 'none'
-        },
-        symbolSize: function(value, params) {
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && params.dataIndex === firstPredictedIndex - 1) {
-            return 6 // 连接点大小
-          }
-          return data.isPredicted[params.dataIndex] ? 8 : 0
-        },
+        symbol: 'circle',
+        symbolSize: 8,
         lineStyle: {
           width: 2,
           color: '#F56C6C',
@@ -643,30 +695,62 @@ const generateGDPChartOption = () => {
         z: 4,
         showSymbol: true
       },
+      // 连接线（从历史数据最后一点到预测数据第一点）
       {
-        name: '历史数据',
+        name: '连接线',
         type: 'line',
-        data: [],
+        data: data.values.map((value, index) => {
+          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
+          // 只在连接点和第一个预测点显示数据
+          if (firstPredictedIndex > 0 && (index === firstPredictedIndex - 1 || index === firstPredictedIndex)) {
+            return value
+          }
+          return null
+        }),
         itemStyle: {
           color: '#409EFF'
         },
-        symbol: 'emptyCircle',
+        symbol: 'none', // 不显示符号，避免重复
         lineStyle: {
-          color: '#409EFF'
-        }
+          width: 2,
+          color: '#409EFF',
+          type: 'solid'
+        },
+        z: 2,
+        showSymbol: false
       },
+
       {
-        name: '预测数据',
+        name: '预测区间上界',
         type: 'line',
-        data: [],
-        itemStyle: {
+        data: data.confidenceInterval.map((interval, index) =>
+          (interval && data.isPredicted[index]) ? interval[1] : null
+        ),
+        lineStyle: {
+          type: 'dashed',
+          width: 1,
           color: '#F56C6C'
         },
-        symbol: 'circle',
+        symbol: 'none',
+        z: 2
+      },
+      {
+        name: '预测区间下界',
+        type: 'line',
+        data: data.confidenceInterval.map((interval, index) =>
+          (interval && data.isPredicted[index]) ? interval[0] : null
+        ),
         lineStyle: {
+          type: 'dashed',
+          width: 1,
+          color: '#F56C6C'
+        },
+        symbol: 'none',
+        areaStyle: {
           color: '#F56C6C',
-          type: 'dashed'
-        }
+          opacity: 0.15
+        },
+        z: 1
       }
     ],
     grid: {
@@ -773,56 +857,38 @@ const generateMonthlyChartOption = (indicator) => {
       nameLocation: 'end'
     },
     series: [
+      // 历史数据线
       {
-        name: '数据线',
+        name: '历史数据',
         type: 'line',
-        data: data.values,
+        data: data.values.map((value, index) =>
+          !data.isPredicted[index] ? value : null
+        ),
         itemStyle: {
-          color: function(params) {
-            return data.isPredicted[params.dataIndex] ? '#F56C6C' : '#409EFF'
-          }
+          color: '#409EFF'
         },
-        symbol: function(value, params) {
-          return data.isPredicted[params.dataIndex] ? 'circle' : 'emptyCircle'
-        },
-        symbolSize: function(value, params) {
-          return data.isPredicted[params.dataIndex] ? 8 : 6
-        },
+        symbol: 'emptyCircle',
+        symbolSize: 6,
         lineStyle: {
           width: 2,
-          color: '#409EFF'
+          color: '#409EFF',
+          type: 'solid'
         },
         z: 3,
         showSymbol: true
       },
+      // 预测数据线
       {
-        name: '预测段',
+        name: '预测数据',
         type: 'line',
-        data: data.values.map((value, index) => {
-          // 找到第一个预测数据点的前一个点，确保连接
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && index === firstPredictedIndex - 1) {
-            return value // 包含连接点
-          }
-          return data.isPredicted[index] ? value : null
-        }),
+        data: data.values.map((value, index) =>
+          data.isPredicted[index] ? value : null
+        ),
         itemStyle: {
           color: '#F56C6C'
         },
-        symbol: function(value, params) {
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && params.dataIndex === firstPredictedIndex - 1) {
-            return 'emptyCircle' // 连接点使用空心圆
-          }
-          return data.isPredicted[params.dataIndex] ? 'circle' : 'none'
-        },
-        symbolSize: function(value, params) {
-          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
-          if (firstPredictedIndex > 0 && params.dataIndex === firstPredictedIndex - 1) {
-            return 6 // 连接点大小
-          }
-          return data.isPredicted[params.dataIndex] ? 8 : 0
-        },
+        symbol: 'circle',
+        symbolSize: 8,
         lineStyle: {
           width: 2,
           color: '#F56C6C',
@@ -831,35 +897,36 @@ const generateMonthlyChartOption = (indicator) => {
         z: 4,
         showSymbol: true
       },
+      // 连接线（从历史数据最后一点到预测数据第一点）
       {
-        name: '历史数据',
+        name: '连接线',
         type: 'line',
-        data: [],
+        data: data.values.map((value, index) => {
+          const firstPredictedIndex = data.isPredicted.findIndex(p => p)
+          // 只在连接点和第一个预测点显示数据
+          if (firstPredictedIndex > 0 && (index === firstPredictedIndex - 1 || index === firstPredictedIndex)) {
+            return value
+          }
+          return null
+        }),
         itemStyle: {
           color: '#409EFF'
         },
-        symbol: 'emptyCircle',
+        symbol: 'none', // 不显示符号，避免重复
         lineStyle: {
-          color: '#409EFF'
-        }
-      },
-      {
-        name: '预测数据',
-        type: 'line',
-        data: [],
-        itemStyle: {
-          color: '#F56C6C'
+          width: 2,
+          color: '#409EFF',
+          type: 'solid'
         },
-        symbol: 'circle',
-        lineStyle: {
-          color: '#F56C6C',
-          type: 'dashed'
-        }
+        z: 2,
+        showSymbol: false
       },
       {
         name: '预测区间上界',
         type: 'line',
-        data: data.confidenceInterval.map(interval => interval ? interval[1] : null),
+        data: data.confidenceInterval.map((interval, index) =>
+          (interval && data.isPredicted[index]) ? interval[1] : null
+        ),
         lineStyle: {
           type: 'dashed',
           width: 1,
@@ -871,7 +938,9 @@ const generateMonthlyChartOption = (indicator) => {
       {
         name: '预测区间下界',
         type: 'line',
-        data: data.confidenceInterval.map(interval => interval ? interval[0] : null),
+        data: data.confidenceInterval.map((interval, index) =>
+          (interval && data.isPredicted[index]) ? interval[0] : null
+        ),
         lineStyle: {
           type: 'dashed',
           width: 1,
