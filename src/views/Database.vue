@@ -204,38 +204,23 @@
 
               <!-- 时间维度切换 tabs -->
               <div class="flex border-b border-gray-100 bg-[#F2F5F8] m-2 p-1 rounded-lg">
-                <button 
-                  v-for="tab in ['月度', '季度', '年度']" 
+                <button
+                  v-for="tab in getAvailableTabs(chart)"
                   :key="tab"
                   class="flex-1 py-2 text-sm transition-all relative"
                   :class="[
-                    tab === '月度' 
-                      ? 'text-gray-700 bg-white rounded-lg shadow-[0_-2px_4px_rgba(0,0,0,0.05)] font-medium' 
+                    tab === getDefaultTab(chart)
+                      ? 'text-gray-700 bg-white rounded-lg shadow-[0_-2px_4px_rgba(0,0,0,0.05)] font-medium'
                       : 'text-gray-600 hover:text-gray-700'
                   ]"
                 >
                   <span class="relative z-10">{{ tab }}</span>
-                  <!-- 活跃状态下的白色背景延伸遮挡下方边框 -->
-                  <!-- 这里的白色背景条是为了遮挡tab下方的灰色边框,使active状态的tab看起来更加突出和连贯
-                  <div 
-                    v-if="tab === '月度'" 
-                    class="absolute bottom-0 left-0 right-0 h-[1px] bg-white"
-                  ></div> -->
                 </button>
               </div>
 
               <!-- 图表区域 -->
               <div class="h-[360px] w-full">
                 <v-chart class="chart" :option="chart.option" autoresize />
-              </div>
-
-              <!-- 预测按钮 -->
-              <div class="p-6 border-t border-gray-100">
-                <button 
-                  class="w-full py-2 bg-white border border-[#348FEF] text-[#348FEF] font-medium rounded-lg hover:bg-[#348FEF] hover:text-white transition-colors text-sm"
-                >
-                  预测次季数据
-                </button>
               </div>
             </div>
           </div>
@@ -403,7 +388,10 @@ const selectedCharts = ref([])
 const isComparisonMode = ref(false)
 
 // 修改API基础URL
-const API_BASE_URL = 'http://120.48.150.254:8888'
+// 本地测试环境
+const API_BASE_URL = 'http://localhost:8888'
+// 生产环境 (部署时取消注释)
+// const API_BASE_URL = 'http://120.48.150.254:8888'
 
 // 添加新的状态变量
 const isPageLoading = ref(false)  // 分页加载状态
@@ -420,7 +408,7 @@ async function fetchChartData() {
       search: searchQuery.value
     })
     
-    const response = await axios.get(`${API_BASE_URL}/api/chart-data`, {
+    const response = await axios.get(`${API_BASE_URL}/api/monthly-prediction-data`, {
       params: {
         page: currentPage.value,
         page_size: pageSize.value,
@@ -434,18 +422,42 @@ async function fetchChartData() {
     const { data, total: totalCount } = response.data
     
     // 将后端数据转换为图表格式
-    charts.value = data.map(item => ({
-      id: item.id,
-      title: item.title,
-      source: item.code,
-      code: item.code,
-      option: generateChartOption({
-        name: item.title,
-        unit: '',
-        time: item.times,
-        data: item.values
-      })
-    }))
+    charts.value = data.map(item => {
+      // 只显示最近2年的数据
+      const currentDate = new Date()
+      const twoYearsAgo = new Date(currentDate.getFullYear() - 2, 0, 1) // 2年前的1月1日
+
+      // 过滤时间和数据，只保留最近2年
+      let filteredTimes = []
+      let filteredValues = []
+      let filteredIsPredicted = []
+
+      if (item.times && item.values && item.is_predicted) {
+        for (let i = 0; i < item.times.length; i++) {
+          const date = new Date(item.times[i])
+          if (date >= twoYearsAgo) {
+            filteredTimes.push(item.times[i])
+            filteredValues.push(item.values[i])
+            // 使用对应索引的预测标记
+            filteredIsPredicted.push(item.is_predicted[i] || false)
+          }
+        }
+      }
+
+      return {
+        id: item.id,
+        title: item.title,
+        source: item.code,
+        code: item.code,
+        option: generateChartOption({
+          name: item.title,
+          unit: '',
+          time: filteredTimes,
+          data: filteredValues,
+          isPredicted: filteredIsPredicted.length > 0 ? filteredIsPredicted : null
+        })
+      }
+    })
     
     total.value = totalCount
     
@@ -636,7 +648,7 @@ async function handleSearch() {
   isSearching.value = true
   try {
     // 调用后端API进行搜索
-    const response = await axios.get(`${API_BASE_URL}/api/chart-data`, {
+    const response = await axios.get(`${API_BASE_URL}/api/monthly-prediction-data`, {
       params: {
         page: 1, // 搜索时重置到第一页
         page_size: pageSize.value,
@@ -647,18 +659,42 @@ async function handleSearch() {
     const { data, total: totalCount } = response.data
     
     // 更新图表数据和总数
-    charts.value = data.map(item => ({
-      id: item.id,
-      title: item.title,
-      source: item.code,
-      code: item.code,
-      option: generateChartOption({
-        name: item.title,
-        unit: '',
-        time: item.times,
-        data: item.values
-      })
-    }))
+    charts.value = data.map(item => {
+      // 只显示最近2年的数据
+      const currentDate = new Date()
+      const twoYearsAgo = new Date(currentDate.getFullYear() - 2, 0, 1) // 2年前的1月1日
+
+      // 过滤时间和数据，只保留最近2年
+      let filteredTimes = []
+      let filteredValues = []
+      let filteredIsPredicted = []
+
+      if (item.times && item.values && item.is_predicted) {
+        for (let i = 0; i < item.times.length; i++) {
+          const date = new Date(item.times[i])
+          if (date >= twoYearsAgo) {
+            filteredTimes.push(item.times[i])
+            filteredValues.push(item.values[i])
+            // 使用对应索引的预测标记
+            filteredIsPredicted.push(item.is_predicted[i] || false)
+          }
+        }
+      }
+
+      return {
+        id: item.id,
+        title: item.title,
+        source: item.code,
+        code: item.code,
+        option: generateChartOption({
+          name: item.title,
+          unit: '',
+          time: filteredTimes,
+          data: filteredValues,
+          isPredicted: filteredIsPredicted.length > 0 ? filteredIsPredicted : null
+        })
+      }
+    })
     
     total.value = totalCount
     currentPage.value = 1 // 重置到第一页
@@ -691,18 +727,42 @@ async function clearSearch() {
     const { data, total: totalCount } = response.data
     
     // 更新图表数据和总数
-    charts.value = data.map(item => ({
-      id: item.id,
-      title: item.title,
-      source: item.code,
-      code: item.code,
-      option: generateChartOption({
-        name: item.title,
-        unit: '',
-        time: item.times,
-        data: item.values
-      })
-    }))
+    charts.value = data.map(item => {
+      // 只显示最近2年的数据
+      const currentDate = new Date()
+      const twoYearsAgo = new Date(currentDate.getFullYear() - 2, 0, 1) // 2年前的1月1日
+
+      // 过滤时间和数据，只保留最近2年
+      let filteredTimes = []
+      let filteredValues = []
+      let filteredIsPredicted = []
+
+      if (item.times && item.values && item.is_predicted) {
+        for (let i = 0; i < item.times.length; i++) {
+          const date = new Date(item.times[i])
+          if (date >= twoYearsAgo) {
+            filteredTimes.push(item.times[i])
+            filteredValues.push(item.values[i])
+            // 使用对应索引的预测标记
+            filteredIsPredicted.push(item.is_predicted[i] || false)
+          }
+        }
+      }
+
+      return {
+        id: item.id,
+        title: item.title,
+        source: item.code,
+        code: item.code,
+        option: generateChartOption({
+          name: item.title,
+          unit: '',
+          time: filteredTimes,
+          data: filteredValues,
+          isPredicted: filteredIsPredicted.length > 0 ? filteredIsPredicted : null
+        })
+      }
+    })
     
     total.value = totalCount
     
@@ -724,11 +784,31 @@ async function handlePageJump() {
   jumpPage.value = ''
 }
 
-// 修改 generateChartOption 函数
-function generateChartOption({ name, unit, time, data }) {
+// 获取可用的时间维度选项
+function getAvailableTabs(chart) {
+  // 如果是GDP相关数据，只显示季度
+  if (chart.title && chart.title.includes('GDP')) {
+    return ['季度']
+  }
+  // 其他数据显示所有选项
+  return ['月度', '季度', '年度']
+}
+
+// 获取默认选中的时间维度
+function getDefaultTab(chart) {
+  // 如果是GDP相关数据，默认选中季度
+  if (chart.title && chart.title.includes('GDP')) {
+    return '季度'
+  }
+  // 其他数据默认选中月度
+  return '月度'
+}
+
+// 修改 generateChartOption 函数，支持历史和预测数据区分
+function generateChartOption({ name, unit, time, data, isPredicted = null }) {
   const validDataPoints = data.map((value, index) => ({ value, index }))
     .filter(item => item.value !== null && item.value !== undefined && item.value !== '')
-  
+
   if (validDataPoints.length === 0) {
     return {
       graphic: {
@@ -746,16 +826,132 @@ function generateChartOption({ name, unit, time, data }) {
 
   const startIndex = validDataPoints[0].index
   const endIndex = validDataPoints[validDataPoints.length - 1].index
-  
+
   const filteredTime = time.slice(startIndex, endIndex + 1)
   const filteredData = data.slice(startIndex, endIndex + 1)
+  const filteredIsPredicted = isPredicted ? isPredicted.slice(startIndex, endIndex + 1) : null
+
+  // 如果有预测数据标记，分别处理历史和预测数据
+  let series = []
+
+  if (filteredIsPredicted && filteredIsPredicted.some(p => p)) {
+    // 找到预测数据开始的位置
+    const predictionStartIndex = filteredIsPredicted.findIndex(p => p)
+
+    // 历史数据系列（包含连接点，到预测开始位置）
+    const historicalData = filteredData.map((value, index) =>
+      index <= predictionStartIndex ? value : null
+    )
+
+    // 预测数据系列（从预测开始位置，包含连接点）
+    const predictedData = filteredData.map((value, index) =>
+      index >= predictionStartIndex ? value : null
+    )
+
+    // 历史数据系列
+    series.push({
+      name: name + ' (历史)',
+      data: historicalData,
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      connectNulls: false,
+      itemStyle: {
+        color: '#348FEF'
+      },
+      lineStyle: {
+        width: 2,
+        color: '#348FEF',
+        type: 'solid'
+      },
+      areaStyle: {
+        opacity: 0.3,
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(52, 143, 239, 0.2)' },
+            { offset: 1, color: 'rgba(52, 143, 239, 0)' }
+          ]
+        }
+      }
+    })
+
+    // 预测数据系列
+    series.push({
+      name: name + ' (预测)',
+      data: predictedData,
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      connectNulls: false,
+      itemStyle: {
+        color: '#FF6B6B'
+      },
+      lineStyle: {
+        width: 2,
+        color: '#FF6B6B',
+        type: 'dashed'
+      },
+      areaStyle: {
+        opacity: 0.2,
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(255, 107, 107, 0.2)' },
+            { offset: 1, color: 'rgba(255, 107, 107, 0)' }
+          ]
+        }
+      }
+    })
+  } else {
+    // 没有预测数据标记，使用单一系列
+    series.push({
+      name: name,
+      data: filteredData,
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      connectNulls: true,
+      areaStyle: {
+        opacity: 0.6,
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(52, 143, 239, 0.2)' },
+            { offset: 1, color: 'rgba(52, 143, 239, 0)' }
+          ]
+        }
+      },
+      itemStyle: {
+        color: '#348FEF'
+      },
+      lineStyle: {
+        width: 1.5,
+        color: '#348FEF'
+      }
+    })
+  }
 
   return {
     tooltip: {
       trigger: 'axis',
       formatter: function (params) {
-        const value = params[0].value === null ? '暂无数据' : params[0].value
-        return `${params[0].axisValue}<br/>${value}`
+        let result = `${params[0].axisValue}<br/>`
+        params.forEach(param => {
+          const value = param.value === null ? '暂无数据' : param.value
+          result += `${param.seriesName}: ${value}<br/>`
+        })
+        return result
+      }
+    },
+    legend: {
+      show: series.length > 1,
+      top: 10,
+      textStyle: {
+        fontSize: 10
       }
     },
     xAxis: {
@@ -786,50 +982,19 @@ function generateChartOption({ name, unit, time, data }) {
       },
       min: function(value) {
         const minValue = value.min + (value.max - value.min) * 0.3;
-        return Math.floor(minValue);  // 向下取整
+        return Math.floor(minValue);
       },
       max: function(value) {
         const maxValue = value.max + (value.max - value.min) * 0.3;
-        return Math.ceil(maxValue);   // 向上取整
+        return Math.ceil(maxValue);
       }
     },
-    series: [{
-      name: name,
-      data: filteredData,
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      connectNulls: true,
-      areaStyle: {
-        opacity: 0.6,
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [{
-            offset: 0, 
-            color: 'rgba(52, 143, 239, 0.2)'
-          }, {
-            offset: 1, 
-            color: 'rgba(52, 143, 239, 0)'
-          }],
-        }
-      },
-      itemStyle: {
-        color: '#348FEF'
-      },
-      lineStyle: {
-        width: 1.5,
-        color: '#348FEF'
-      }
-    }],
+    series: series,
     grid: {
       left: '8%',
       right: '8%',
       bottom: '15%',
-      top: '15%',
+      top: series.length > 1 ? '20%' : '15%',
       containLabel: true
     },
     dataZoom: [

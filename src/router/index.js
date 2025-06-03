@@ -24,6 +24,11 @@ const routes = [
   {
     path: '/database',
     name: 'Database',
+    component: () => import('@/views/DatabaseNew.vue')
+  },
+  {
+    path: '/database-old',
+    name: 'DatabaseOld',
     component: () => import('@/views/Database.vue')
   },
   {

@@ -218,17 +218,10 @@ async def background_cache_task():
 # 修改应用启动生命周期
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时处理所有数据
-    await process_all_data()
-    # 启动优先页面预缓存
-    await precache_priority_pages()
-    # 启动后台缓存任务
-    asyncio.create_task(background_cache_task())
-    # 启动保存响应的worker
-    asyncio.create_task(save_responses_worker())
+    # 跳过启动时的数据处理，直接启动服务器
+    logger.info("应用启动完成")
     yield
-    # 关闭时的清理代码
-    processed_data.clear()
+    logger.info("应用关闭")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -565,18 +558,14 @@ class ChartDataResponse(BaseModel):
     data: List[dict]
     columns: List[str]
 
-# 定义据文件映射
+# 定义数据文件映射
 DATA_FILES = {
-    'cy': 'DATACY20241103 - month.csv',
-    'dwl': 'DATADWL-241103 - 月度 (1).csv',
-    'dm_quarter': 'DATADM-20241103 - 季度.csv',
-    'dm_month': 'DATADM-20241103 - 月度.csv',
-    'lf': 'DATALF-20241103 - DAY.csv'
+    'merged_data': 'DATAMERGED-20241203-完整数据集-修复版.csv'
 }
 
 # PKL文件缓存路径
 CACHE_DIR = Path("data/cache")
-CACHE_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 添加缓存装饰器用于缓存处理后的分页数据
 @lru_cache(maxsize=1000)  # 保持较大的缓存大小
@@ -663,6 +652,246 @@ async def clear_chart_cache():
         return {"message": "Cache cleared successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# 添加GDP数据端点
+@app.get("/api/gdp-data")
+async def get_gdp_data():
+    """获取完整的GDP季度数据"""
+    try:
+        logger.info("开始获取GDP数据...")
+
+        # 读取GDP数据文件
+        gdp_file = 'data/gdp_complete_data.csv'
+        if not os.path.exists(gdp_file):
+            raise HTTPException(status_code=404, detail="GDP数据文件不存在")
+
+        df = pd.read_csv(gdp_file, encoding='utf-8')
+
+        # 准备返回数据
+        gdp_data = {
+            'dates': df['date'].tolist(),
+            'quarters': df['quarter'].tolist(),
+            'values': df['gdp_value'].tolist(),
+            'is_predicted': df['is_predicted'].tolist(),
+            'confidence_intervals': df['confidence_interval'].fillna(0).tolist(),
+            'total_records': len(df),
+            'latest_value': float(df['gdp_value'].iloc[-1]),
+            'latest_quarter': df['quarter'].iloc[-1],
+            'historical_count': len(df[~df['is_predicted']]),
+            'predicted_count': len(df[df['is_predicted']])
+        }
+
+        logger.info(f"GDP数据获取完成，共 {len(df)} 条记录")
+        return gdp_data
+
+    except Exception as e:
+        logger.error(f"获取GDP数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取GDP数据失败: {str(e)}")
+
+# 添加月度预测数据端点
+@app.get("/api/monthly-prediction-data")
+async def get_monthly_prediction_data(
+    page: int = Query(1, description="页码，从1开始"),
+    page_size: int = Query(20, description="每页数据量"),
+    search: str = Query(None, description="搜索关键词")
+):
+    """获取月度预测数据，合并历史数据和预测数据"""
+    try:
+        logger.info(f"开始获取月度预测数据: page={page}, page_size={page_size}, search={search}")
+
+        # 读取完整合并数据文件
+        merged_file = '../update/月度数据完整合并结果.csv'
+        if not os.path.exists(merged_file):
+            raise HTTPException(status_code=404, detail="月度数据完整合并文件不存在")
+
+        # 尝试不同编码读取文件
+        df = None
+        for encoding in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                df = pd.read_csv(merged_file, encoding=encoding)
+                logger.info(f"完整合并数据使用 {encoding} 编码读取成功，形状: {df.shape}")
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if df is None:
+            raise HTTPException(status_code=500, detail="无法读取月度数据完整合并文件")
+
+        # 处理数据
+        df = df.dropna(how='all')  # 删除全空行
+
+        # 检查第一列的名称，可能是 'timestamp' 或 'date'
+        time_column = df.columns[0]
+        if time_column not in ['timestamp', 'date']:
+            raise HTTPException(status_code=500, detail=f"时间列名称错误: {time_column}")
+
+        df[time_column] = pd.to_datetime(df[time_column])
+
+        # 获取时间列和数据列
+        data_columns = df.columns[1:]  # 排除时间列
+
+        # 创建指标数据
+        indicators = []
+
+        for i, column in enumerate(data_columns):
+            # 找到该列第一个非空值的位置
+            first_valid_idx = df[column].first_valid_index()
+            if first_valid_idx is None:
+                continue  # 如果该列完全没有数据，跳过
+
+            # 从第一个非空值开始处理数据
+            column_data = df.loc[first_valid_idx:].copy()
+
+            times = []
+            values = []
+            is_predicted = []
+
+            for _, row in column_data.iterrows():
+                # 只处理非空值
+                if pd.notna(row[column]):
+                    date_str = row[time_column].strftime('%Y-%m-%d')
+                    times.append(date_str)
+
+                    # 处理数值格式：去除逗号分隔符和空格
+                    value_str = str(row[column]).strip()
+                    if value_str and value_str != 'nan':
+                        try:
+                            # 移除逗号分隔符
+                            clean_value = value_str.replace(',', '')
+                            values.append(float(clean_value))
+                        except (ValueError, TypeError):
+                            # 如果转换失败，跳过这个数据点
+                            times.pop()  # 移除刚添加的时间
+                            continue
+                    else:
+                        times.pop()  # 移除刚添加的时间
+                        continue
+
+                    # 判断是否为预测数据（2025年6月之后）
+                    is_pred = row[time_column] >= pd.Timestamp('2025-06-01')
+                    is_predicted.append(is_pred)
+
+            # 如果该列没有任何有效数据，跳过
+            if len(times) == 0:
+                continue
+
+            # 创建指标对象
+            indicator = {
+                'id': f'monthly_merged_{i}',
+                'title': column,
+                'code': 'MONTHLY_MERGED',
+                'source': '历史+预测数据',
+                'times': times,
+                'values': values,
+                'is_predicted': is_predicted
+            }
+
+            # 如果有搜索条件，进行过滤
+            if search and search.strip():
+                if search.lower() not in column.lower():
+                    continue
+
+            indicators.append(indicator)
+
+        # 4. 分页处理
+        total = len(indicators)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_indicators = indicators[start_idx:end_idx]
+
+        result = {
+            'data': page_indicators,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (total + page_size - 1) // page_size
+        }
+
+        logger.info(f"合并数据完成，共 {total} 个指标，返回 {len(page_indicators)} 个")
+        return result
+
+    except Exception as e:
+        logger.error(f"获取月度预测数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取月度预测数据失败: {str(e)}")
+
+# 添加首页关键指标数据端点
+@app.get("/api/key-indicators")
+async def get_key_indicators():
+    """获取首页关键经济指标数据"""
+    try:
+        logger.info("开始获取关键经济指标数据...")
+
+        # 1. 获取GDP数据
+        gdp_file = 'data/gdp_complete_data.csv'
+        gdp_data = None
+        if os.path.exists(gdp_file):
+            df_gdp = pd.read_csv(gdp_file, encoding='utf-8')
+            gdp_data = {
+                'name': 'GDP不变价:当季同比',
+                'value': float(df_gdp['gdp_value'].iloc[-1]),
+                'quarter': df_gdp['quarter'].iloc[-1],
+                'unit': '%',
+                'is_predicted': bool(df_gdp['is_predicted'].iloc[-1])
+            }
+
+        # 2. 获取其他月度指标数据
+        monthly_indicators = []
+
+        # 从合并数据中获取最新的月度指标
+        merged_file = 'data/DATAMERGED-20241203-完整数据集-修复版.csv'
+        if os.path.exists(merged_file):
+            df_monthly = pd.read_csv(merged_file, encoding='utf-8')
+            df_monthly['date'] = pd.to_datetime(df_monthly['date'])
+            df_monthly = df_monthly.sort_values('date')
+
+            # 获取最新一行数据
+            latest_row = df_monthly.iloc[-1]
+            latest_date = latest_row['date'].strftime('%Y-%m')
+
+            # 定义关键指标映射
+            key_indicators_mapping = [
+                {'column': '中国:社会消费品零售总额:当月同比', 'name': '社会消费品零售总额', 'unit': '%'},
+                {'column': '中国:CPI:当月同比', 'name': 'CPI', 'unit': '%'},
+                {'column': '中国:PPI:全部工业品:当月同比', 'name': 'PPI', 'unit': '%'},
+                {'column': '中国:工业增加值:规模以上工业企业:当月同比', 'name': '工业增加值', 'unit': '%'},
+                {'column': '固定资产投资完成额:累计同比', 'name': '固定资产投资', 'unit': '%'},
+                {'column': '中国:出口金额:当月同比', 'name': '出口金额', 'unit': '%'},
+                {'column': '中国:进口金额:当月同比', 'name': '进口金额', 'unit': '%'},
+                {'column': '房地产开发投资完成额:累计同比', 'name': '房地产投资', 'unit': '%'},
+                {'column': '中国:M2:同比', 'name': 'M2货币供应量', 'unit': '%'},
+                {'column': '中国:社会融资规模:当月值', 'name': '社会融资规模', 'unit': '亿元'}
+            ]
+
+            for indicator in key_indicators_mapping:
+                column = indicator['column']
+                if column in df_monthly.columns:
+                    value = latest_row[column]
+                    if pd.notna(value):
+                        # 判断是否为预测数据（2025年的数据）
+                        is_predicted = latest_row['date'].year >= 2025
+
+                        monthly_indicators.append({
+                            'name': indicator['name'],
+                            'value': float(value),
+                            'date': latest_date,
+                            'unit': indicator['unit'],
+                            'is_predicted': is_predicted
+                        })
+
+        # 3. 组合返回数据
+        result = {
+            'gdp': gdp_data,
+            'monthly_indicators': monthly_indicators,
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'total_indicators': len(monthly_indicators) + (1 if gdp_data else 0)
+        }
+
+        logger.info(f"关键指标数据获取完成，共 {result['total_indicators']} 个指标")
+        return result
+
+    except Exception as e:
+        logger.error(f"获取关键指标数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取关键指标数据失败: {str(e)}")
 
 # 添加新的路由处理函数
 @app.post("/api/gdp-analysis")

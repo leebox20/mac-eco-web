@@ -13,7 +13,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://120.48.150.254:8888',
+        // 本地测试环境
+        target: 'http://localhost:8888',
+        // 生产环境 (部署时取消注释)
+        // target: 'http://120.48.150.254:8888',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }
