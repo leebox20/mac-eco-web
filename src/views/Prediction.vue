@@ -236,6 +236,8 @@ const loadData = async () => {
           if (dateStr === indicator.date) {
             values.push(indicator.value)
             isPredicted.push(indicator.is_predicted)
+            // 使用API返回的置信区间
+            confidenceInterval.push(indicator.confidence_interval || null)
           } else {
             // 生成基于当前值的模拟数据
             const variation = (Math.random() - 0.5) * 2
@@ -245,17 +247,27 @@ const loadData = async () => {
               const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
               const trendFactor = monthsFromCurrent * 0.05
               simulatedValue += (Math.random() - 0.5) * trendFactor
+              confidenceInterval.push(null)
             } else {
               const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
               const predictionVariation = monthsFromCurrent * 0.1
               simulatedValue += (Math.random() - 0.5) * predictionVariation
+
+              // 为预测数据生成置信区间（如果原始数据有的话）
+              if (indicator.confidence_interval) {
+                const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
+                confidenceInterval.push([
+                  simulatedValue - intervalWidth / 2,
+                  simulatedValue + intervalWidth / 2
+                ])
+              } else {
+                confidenceInterval.push(null)
+              }
             }
 
             values.push(simulatedValue)
             isPredicted.push(!isHistorical)
           }
-
-          confidenceInterval.push(null)
         }
       }
 
@@ -680,10 +692,14 @@ const generateMonthlyChartOption = (indicator) => {
         const date = data.dates[dataIndex]
         const value = data.values[dataIndex]
         const isPredicted = data.isPredicted[dataIndex]
+        const confidenceInterval = data.confidenceInterval[dataIndex]
 
         let tooltip = `${date}<br/>`
         if (isPredicted) {
           tooltip += `<span style="color: #F56C6C">预测值: ${value.toFixed(2)}${data.unit}</span>`
+          if (confidenceInterval) {
+            tooltip += `<br/><span style="color: #F56C6C">置信区间: [${confidenceInterval[0].toFixed(2)}${data.unit}, ${confidenceInterval[1].toFixed(2)}${data.unit}]</span>`
+          }
         } else {
           tooltip += `<span style="color: #409EFF">实际值: ${value.toFixed(2)}${data.unit}</span>`
         }
@@ -691,7 +707,7 @@ const generateMonthlyChartOption = (indicator) => {
       }
     },
     legend: {
-      data: ['历史数据', '预测数据'],
+      data: ['历史数据', '预测数据', '预测区间'],
       top: 0,
       textStyle: {
         color: '#666'
@@ -839,6 +855,34 @@ const generateMonthlyChartOption = (indicator) => {
           color: '#F56C6C',
           type: 'dashed'
         }
+      },
+      {
+        name: '预测区间上界',
+        type: 'line',
+        data: data.confidenceInterval.map(interval => interval ? interval[1] : null),
+        lineStyle: {
+          type: 'dashed',
+          width: 1,
+          color: '#F56C6C'
+        },
+        symbol: 'none',
+        z: 2
+      },
+      {
+        name: '预测区间下界',
+        type: 'line',
+        data: data.confidenceInterval.map(interval => interval ? interval[0] : null),
+        lineStyle: {
+          type: 'dashed',
+          width: 1,
+          color: '#F56C6C'
+        },
+        symbol: 'none',
+        areaStyle: {
+          color: '#F56C6C',
+          opacity: 0.15
+        },
+        z: 1
       }
     ],
     grid: {

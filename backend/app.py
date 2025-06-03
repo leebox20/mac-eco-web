@@ -837,16 +837,69 @@ async def get_key_indicators():
         # 2. 获取其他月度指标数据
         monthly_indicators = []
 
-        # 从合并数据中获取最新的月度指标
+        # 优先使用含区间的月度数据文件
+        monthly_file_with_interval = '../update/月度关键数据预测结果含区间.csv'
+        monthly_file_original = '../update/月度关键数据预测结果.csv'
         merged_file = 'data/DATAMERGED-20241203-完整数据集-修复版.csv'
-        if os.path.exists(merged_file):
+
+        # 按优先级尝试读取文件
+        df_monthly = None
+        data_source = None
+
+        # 1. 优先尝试含区间的文件
+        if os.path.exists(monthly_file_with_interval):
+            for encoding in ['utf-8', 'gbk', 'gb2312']:
+                try:
+                    df_monthly = pd.read_csv(monthly_file_with_interval, encoding=encoding)
+                    data_source = 'interval'
+                    logger.info(f"使用含区间数据文件，编码: {encoding}，形状: {df_monthly.shape}")
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+        # 2. 如果含区间文件不存在或读取失败，尝试原始文件
+        if df_monthly is None and os.path.exists(monthly_file_original):
+            for encoding in ['utf-8', 'gbk', 'gb2312']:
+                try:
+                    df_monthly = pd.read_csv(monthly_file_original, encoding=encoding)
+                    data_source = 'original'
+                    logger.info(f"使用原始数据文件，编码: {encoding}，形状: {df_monthly.shape}")
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+        # 3. 最后尝试合并文件
+        if df_monthly is None and os.path.exists(merged_file):
             df_monthly = pd.read_csv(merged_file, encoding='utf-8')
             df_monthly['date'] = pd.to_datetime(df_monthly['date'])
             df_monthly = df_monthly.sort_values('date')
+            data_source = 'merged'
+            logger.info(f"使用合并数据文件，形状: {df_monthly.shape}")
 
+        if df_monthly is not None and not df_monthly.empty:
             # 获取最新一行数据
             latest_row = df_monthly.iloc[-1]
-            latest_date = latest_row['date'].strftime('%Y-%m')
+
+            # 处理日期格式
+            if data_source == 'merged':
+                latest_date = latest_row['date'].strftime('%Y-%m')
+            else:
+                latest_date_raw = latest_row.iloc[0]  # 第一列是日期
+                if isinstance(latest_date_raw, str):
+                    try:
+                        if 'M' in latest_date_raw:
+                            # 处理 2025M05 格式
+                            year, month = latest_date_raw.split('M')
+                            latest_date = f"{year}-{month.zfill(2)}"
+                        elif '/' in latest_date_raw:
+                            # 处理 2025/6/30 格式
+                            parts = latest_date_raw.split('/')
+                            if len(parts) >= 2:
+                                latest_date = f"{parts[0]}-{parts[1].zfill(2)}"
+                        else:
+                            latest_date = pd.to_datetime(latest_date_raw).strftime('%Y-%m')
+                    except:
+                        latest_date = str(latest_date_raw)
 
             # 定义关键指标映射
             key_indicators_mapping = [
@@ -867,15 +920,28 @@ async def get_key_indicators():
                 if column in df_monthly.columns:
                     value = latest_row[column]
                     if pd.notna(value):
-                        # 判断是否为预测数据（2025年的数据）
-                        is_predicted = latest_row['date'].year >= 2025
+                        # 判断是否为预测数据
+                        if data_source == 'merged':
+                            is_predicted = latest_row['date'].year >= 2025
+                        else:
+                            is_predicted = '2025' in str(latest_date)
+
+                        # 处理置信区间（仅当使用含区间文件时）
+                        confidence_interval = None
+                        if data_source == 'interval':
+                            variation_column = f"{column}_variation"
+                            if variation_column in df_monthly.columns:
+                                variation = latest_row[variation_column]
+                                if pd.notna(variation):
+                                    confidence_interval = [float(value) - float(variation), float(value) + float(variation)]
 
                         monthly_indicators.append({
                             'name': indicator['name'],
                             'value': float(value),
                             'date': latest_date,
                             'unit': indicator['unit'],
-                            'is_predicted': is_predicted
+                            'is_predicted': is_predicted,
+                            'confidence_interval': confidence_interval
                         })
 
         # 3. 组合返回数据

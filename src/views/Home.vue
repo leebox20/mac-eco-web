@@ -638,6 +638,8 @@ const loadData = async () => {
             if (dateStr === indicator.date) {
               values.push(indicator.value)
               isPredicted.push(indicator.is_predicted)
+              // 使用API返回的置信区间
+              confidenceInterval.push(indicator.confidence_interval || null)
             } else {
               // 生成基于当前值的历史/预测模拟数据
               const variation = (Math.random() - 0.5) * 2 // -1 到 1 的变化
@@ -648,18 +650,28 @@ const loadData = async () => {
                 const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
                 const trendFactor = monthsFromCurrent * 0.05 // 越早的数据变化稍大
                 simulatedValue += (Math.random() - 0.5) * trendFactor
+                confidenceInterval.push(null)
               } else {
                 // 预测数据：基于当前值的合理预测
                 const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
                 const predictionVariation = monthsFromCurrent * 0.1 // 预测越远变化越大
                 simulatedValue += (Math.random() - 0.5) * predictionVariation
+
+                // 为预测数据生成置信区间（如果原始数据有的话）
+                if (indicator.confidence_interval) {
+                  const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
+                  confidenceInterval.push([
+                    simulatedValue - intervalWidth / 2,
+                    simulatedValue + intervalWidth / 2
+                  ])
+                } else {
+                  confidenceInterval.push(null)
+                }
               }
 
               values.push(simulatedValue)
               isPredicted.push(!isHistorical)
             }
-
-            confidenceInterval.push(null)
           }
         }
 
