@@ -656,32 +656,153 @@ async def clear_chart_cache():
 # 添加GDP数据端点
 @app.get("/api/gdp-data")
 async def get_gdp_data():
-    """获取完整的GDP季度数据"""
+    """获取完整的GDP季度数据，包含置信区间"""
     try:
         logger.info("开始获取GDP数据...")
 
-        # 读取GDP数据文件
-        gdp_file = 'data/gdp_complete_data.csv'
-        if not os.path.exists(gdp_file):
-            raise HTTPException(status_code=404, detail="GDP数据文件不存在")
+        # 1. 优先读取含区间的季度数据文件
+        quarterly_interval_file = '../update/季度关键数据预测结果含区间.csv'
+        gdp_complete_file = 'data/gdp_complete_data.csv'
 
-        df = pd.read_csv(gdp_file, encoding='utf-8')
+        df_final = None
 
-        # 准备返回数据
+        # 尝试读取含区间的季度数据
+        if os.path.exists(quarterly_interval_file):
+            try:
+                # 尝试不同编码读取含区间文件
+                for encoding in ['utf-8', 'gbk', 'gb2312']:
+                    try:
+                        df_quarterly = pd.read_csv(quarterly_interval_file, encoding=encoding)
+                        logger.info(f"成功读取季度区间数据，编码: {encoding}，形状: {df_quarterly.shape}")
+                        break
+                    except UnicodeDecodeError:
+                        continue
+
+                if df_quarterly is not None and not df_quarterly.empty:
+                    # 处理含区间的季度数据
+                    processed_quarterly = []
+
+                    for _, row in df_quarterly.iterrows():
+                        if pd.isna(row.iloc[0]) or str(row.iloc[0]).strip() == '':
+                            continue
+
+                        # 解析时间戳
+                        timestamp_str = str(row.iloc[0]).strip()
+                        try:
+                            if '/' in timestamp_str:
+                                # 处理 2025/6/30 格式
+                                parts = timestamp_str.split('/')
+                                if len(parts) >= 3:
+                                    year, month, day = parts[0], parts[1], parts[2]
+                                    date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+                                    # 确定季度
+                                    month_int = int(month)
+                                    if month_int <= 3:
+                                        quarter = f"{year}Q1"
+                                    elif month_int <= 6:
+                                        quarter = f"{year}Q2"
+                                    elif month_int <= 9:
+                                        quarter = f"{year}Q3"
+                                    else:
+                                        quarter = f"{year}Q4"
+                            else:
+                                continue
+                        except:
+                            continue
+
+                        # 获取GDP值和置信区间
+                        gdp_value = None
+                        confidence_interval = None
+
+                        # 查找GDP相关列
+                        for col_idx, col_name in enumerate(df_quarterly.columns):
+                            if 'GDP' in str(col_name) and 'variation' not in str(col_name):
+                                gdp_value = row.iloc[col_idx]
+                                # 查找对应的variation列
+                                variation_col = f"{col_name}_variation"
+                                if variation_col in df_quarterly.columns:
+                                    variation = row[variation_col]
+                                    if pd.notna(variation) and pd.notna(gdp_value):
+                                        confidence_interval = float(variation)
+                                break
+
+                        if pd.notna(gdp_value):
+                            processed_quarterly.append({
+                                'date': date,
+                                'quarter': quarter,
+                                'gdp_value': float(gdp_value),
+                                'confidence_interval': confidence_interval,
+                                'is_predicted': True
+                            })
+
+                    # 如果有处理后的季度数据，读取历史数据并合并
+                    if processed_quarterly:
+                        if os.path.exists(gdp_complete_file):
+                            df_historical = pd.read_csv(gdp_complete_file, encoding='utf-8')
+                            # 只保留历史数据（非预测数据）
+                            df_historical = df_historical[~df_historical['is_predicted']].copy()
+
+                            # 合并历史数据和新的预测数据
+                            historical_data = df_historical.to_dict('records')
+                            all_data = historical_data + processed_quarterly
+
+                            # 创建最终DataFrame并去重
+                            df_final = pd.DataFrame(all_data)
+                            df_final['date'] = pd.to_datetime(df_final['date'])
+
+                            # 按季度去重，保留最新的数据
+                            df_final = df_final.drop_duplicates(subset=['quarter'], keep='last')
+                            df_final = df_final.sort_values('date').reset_index(drop=True)
+
+                            logger.info(f"合并数据完成：历史数据 {len(historical_data)} 条，新预测数据 {len(processed_quarterly)} 条，去重后 {len(df_final)} 条")
+                        else:
+                            # 只有新的预测数据
+                            df_final = pd.DataFrame(processed_quarterly)
+                            df_final['date'] = pd.to_datetime(df_final['date'])
+                            df_final = df_final.sort_values('date').reset_index(drop=True)
+
+                            logger.info(f"只使用新预测数据：{len(processed_quarterly)} 条")
+
+            except Exception as e:
+                logger.warning(f"处理季度区间数据失败: {str(e)}")
+
+        # 2. 如果没有成功处理含区间数据，使用原有的完整数据文件
+        if df_final is None:
+            if not os.path.exists(gdp_complete_file):
+                raise HTTPException(status_code=404, detail="GDP数据文件不存在")
+
+            df_final = pd.read_csv(gdp_complete_file, encoding='utf-8')
+            logger.info("使用原有GDP完整数据文件")
+
+        # 3. 准备返回数据，处理置信区间格式
+        confidence_intervals_formatted = []
+        for _, row in df_final.iterrows():
+            if pd.notna(row['confidence_interval']) and row['confidence_interval'] != 0:
+                # 将单个置信区间值转换为上下界数组
+                interval_value = float(row['confidence_interval'])
+                gdp_value = float(row['gdp_value'])
+                confidence_intervals_formatted.append([
+                    gdp_value - interval_value,
+                    gdp_value + interval_value
+                ])
+            else:
+                confidence_intervals_formatted.append(None)
+
         gdp_data = {
-            'dates': df['date'].tolist(),
-            'quarters': df['quarter'].tolist(),
-            'values': df['gdp_value'].tolist(),
-            'is_predicted': df['is_predicted'].tolist(),
-            'confidence_intervals': df['confidence_interval'].fillna(0).tolist(),
-            'total_records': len(df),
-            'latest_value': float(df['gdp_value'].iloc[-1]),
-            'latest_quarter': df['quarter'].iloc[-1],
-            'historical_count': len(df[~df['is_predicted']]),
-            'predicted_count': len(df[df['is_predicted']])
+            'dates': df_final['date'].dt.strftime('%Y-%m-%d').tolist(),
+            'quarters': df_final['quarter'].tolist(),
+            'values': df_final['gdp_value'].tolist(),
+            'is_predicted': df_final['is_predicted'].tolist(),
+            'confidence_intervals': confidence_intervals_formatted,
+            'total_records': len(df_final),
+            'latest_value': float(df_final['gdp_value'].iloc[-1]),
+            'latest_quarter': df_final['quarter'].iloc[-1],
+            'historical_count': len(df_final[~df_final['is_predicted']]),
+            'predicted_count': len(df_final[df_final['is_predicted']])
         }
 
-        logger.info(f"GDP数据获取完成，共 {len(df)} 条记录")
+        logger.info(f"GDP数据获取完成，共 {len(df_final)} 条记录，其中预测数据 {gdp_data['predicted_count']} 条")
         return gdp_data
 
     except Exception as e:
