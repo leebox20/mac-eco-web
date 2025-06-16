@@ -107,7 +107,7 @@
                 </svg>
               </div>
               <h3 class="text-lg font-medium text-gray-900 mb-2">请选择一个指标</h3>
-              <p class="text-gray-500">从左侧列表中选择一个指标来查看其日度、月度和季度数据</p>
+              <p class="text-gray-500">从左侧列表中选择一个指标来查看数据图表</p>
             </div>
 
             <!-- 选中指标时显示图表 -->
@@ -118,34 +118,10 @@
                 <p class="text-sm text-gray-500 mt-1">数据来源：{{ selectedIndicator.code }}</p>
               </div>
 
-              <!-- 三个时间维度的图表 -->
+              <!-- 根据指标类型显示相应的图表 -->
               <div class="space-y-6">
-                <!-- 日度图表 -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <h3 class="text-lg font-medium text-gray-900 mb-4">日度数据</h3>
-                  <div v-if="isLoadingCharts" class="flex justify-center items-center py-12">
-                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                    <span class="ml-2 text-gray-600">加载图表...</span>
-                  </div>
-                  <div v-else class="h-80">
-                    <v-chart class="chart" :option="dailyChartOption" autoresize />
-                  </div>
-                </div>
-
-                <!-- 月度图表 -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                  <h3 class="text-lg font-medium text-gray-900 mb-4">月度数据</h3>
-                  <div v-if="isLoadingCharts" class="flex justify-center items-center py-12">
-                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                    <span class="ml-2 text-gray-600">加载图表...</span>
-                  </div>
-                  <div v-else class="h-80">
-                    <v-chart class="chart" :option="monthlyChartOption" autoresize />
-                  </div>
-                </div>
-
-                <!-- 季度图表 -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <!-- GDP指标显示季度图表 -->
+                <div v-if="isGDPIndicator" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <h3 class="text-lg font-medium text-gray-900 mb-4">季度数据</h3>
                   <div v-if="isLoadingCharts" class="flex justify-center items-center py-12">
                     <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -153,6 +129,18 @@
                   </div>
                   <div v-else class="h-80">
                     <v-chart class="chart" :option="quarterlyChartOption" autoresize />
+                  </div>
+                </div>
+
+                <!-- 其他指标显示月度图表 -->
+                <div v-if="!isGDPIndicator" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 class="text-lg font-medium text-gray-900 mb-4">月度数据</h3>
+                  <div v-if="isLoadingCharts" class="flex justify-center items-center py-12">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span class="ml-2 text-gray-600">加载图表...</span>
+                  </div>
+                  <div v-else class="h-80">
+                    <v-chart class="chart" :option="monthlyChartOption" autoresize />
                   </div>
                 </div>
               </div>
@@ -199,12 +187,59 @@ const pageSize = ref(20)
 const total = ref(0)
 
 // 图表选项
-const dailyChartOption = ref({})
 const monthlyChartOption = ref({})
 const quarterlyChartOption = ref({})
 
 // 计算属性
 const totalPages = computed(() => Math.ceil(total.value / pageSize.value))
+
+// 判断是否为GDP指标
+const isGDPIndicator = computed(() => {
+  if (!selectedIndicator.value) return false
+  return selectedIndicator.value.title.includes('GDP') ||
+         selectedIndicator.value.title.includes('gdp') ||
+         selectedIndicator.value.title.includes('国内生产总值')
+})
+
+// 根据指标名称智能识别单位
+function getIndicatorUnit(indicatorTitle) {
+  const title = indicatorTitle.toLowerCase()
+
+  // 百分比类指标
+  if (title.includes('同比') || title.includes('环比') ||
+      title.includes('增长') || title.includes('增速') ||
+      title.includes('cpi') || title.includes('ppi') ||
+      title.includes('开工率') || title.includes('收益率') ||
+      title.includes('利率') || title.includes('通胀')) {
+    return '%'
+  }
+
+  // 指数类指标
+  if (title.includes('指数') || title.includes('index')) {
+    return '点'
+  }
+
+  // 价格类指标
+  if (title.includes('价格') || title.includes('现价') ||
+      title.includes('收盘价') || title.includes('中间价')) {
+    return '元'
+  }
+
+  // 汇率类指标
+  if (title.includes('汇率') || title.includes('兑') ||
+      title.includes('美元') || title.includes('欧元') ||
+      title.includes('英镑') || title.includes('日元')) {
+    return ''
+  }
+
+  // 运价类指标
+  if (title.includes('运价') || title.includes('运输')) {
+    return '美元'
+  }
+
+  // 默认为空单位（原始数值）
+  return ''
+}
 
 // 生命周期
 onMounted(() => {
@@ -280,38 +315,39 @@ async function generateCharts(indicator) {
       }
     }
 
-    // 生成不同时间维度的数据
-    const dailyData = generateTimeSeriesData(filteredTimes, filteredValues, filteredIsPredicted, 'daily')
-    const monthlyData = generateTimeSeriesData(filteredTimes, filteredValues, filteredIsPredicted, 'monthly')
-    const quarterlyData = generateTimeSeriesData(filteredTimes, filteredValues, filteredIsPredicted, 'quarterly')
+    // 判断是否为GDP指标
+    const isGDP = indicator.title.includes('GDP') ||
+                  indicator.title.includes('gdp') ||
+                  indicator.title.includes('国内生产总值')
 
-    // 生成图表选项
-    dailyChartOption.value = generateChartOption({
-      name: indicator.title,
-      unit: '',
-      time: dailyData.times,
-      data: dailyData.values,
-      isPredicted: dailyData.isPredicted,
-      timeType: '日度'
-    })
+    // 智能识别单位
+    const unit = getIndicatorUnit(indicator.title)
 
-    monthlyChartOption.value = generateChartOption({
-      name: indicator.title,
-      unit: '',
-      time: monthlyData.times,
-      data: monthlyData.values,
-      isPredicted: monthlyData.isPredicted,
-      timeType: '月度'
-    })
+    if (isGDP) {
+      // GDP指标：只生成季度图表
+      const quarterlyData = generateTimeSeriesData(filteredTimes, filteredValues, filteredIsPredicted, 'quarterly')
 
-    quarterlyChartOption.value = generateChartOption({
-      name: indicator.title,
-      unit: '',
-      time: quarterlyData.times,
-      data: quarterlyData.values,
-      isPredicted: quarterlyData.isPredicted,
-      timeType: '季度'
-    })
+      quarterlyChartOption.value = generateChartOption({
+        name: indicator.title,
+        unit: '%', // GDP始终使用百分比
+        time: quarterlyData.times,
+        data: quarterlyData.values,
+        isPredicted: quarterlyData.isPredicted,
+        timeType: '季度'
+      })
+    } else {
+      // 其他指标：只生成月度图表
+      const monthlyData = generateTimeSeriesData(filteredTimes, filteredValues, filteredIsPredicted, 'monthly')
+
+      monthlyChartOption.value = generateChartOption({
+        name: indicator.title,
+        unit: unit,
+        time: monthlyData.times,
+        data: monthlyData.values,
+        isPredicted: monthlyData.isPredicted,
+        timeType: '月度'
+      })
+    }
 
   } catch (error) {
     console.error('生成图表失败:', error)
@@ -330,9 +366,6 @@ function generateTimeSeriesData(times, values, isPredicted, timeType) {
     let key
 
     switch (timeType) {
-      case 'daily':
-        key = date.toISOString().split('T')[0] // YYYY-MM-DD
-        break
       case 'monthly':
         key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` // YYYY-MM
         break
@@ -402,6 +435,45 @@ function generateChartOption({ name, unit, time, data, isPredicted = null, timeT
   const filteredTime = time.slice(startIndex, endIndex + 1)
   const filteredData = data.slice(startIndex, endIndex + 1)
   const filteredIsPredicted = isPredicted ? isPredicted.slice(startIndex, endIndex + 1) : null
+
+  // 计算数据范围，用于优化Y轴显示
+  const validValues = filteredData.filter(v => v !== null && v !== undefined && !isNaN(v))
+  let yAxisMin = null
+  let yAxisMax = null
+
+  if (validValues.length > 0) {
+    const minValue = Math.min(...validValues)
+    const maxValue = Math.max(...validValues)
+    const range = maxValue - minValue
+
+    // 如果数据范围很小，给Y轴添加适当的边距
+    if (range > 0) {
+      // 根据数据范围动态调整边距
+      let marginPercent = 0.15 // 默认15%边距
+
+      // 如果数据变化很小（小于5%），增加边距让变化更明显
+      if (range < Math.abs(maxValue) * 0.05) {
+        marginPercent = 0.3 // 30%边距
+      }
+
+      const margin = range * marginPercent
+      yAxisMin = minValue - margin
+      yAxisMax = maxValue + margin
+
+      // 确保Y轴范围不会过小
+      const finalRange = yAxisMax - yAxisMin
+      if (finalRange < 1) {
+        const center = (yAxisMin + yAxisMax) / 2
+        yAxisMin = center - 0.5
+        yAxisMax = center + 0.5
+      }
+    } else {
+      // 如果所有值都相同，设置一个合理的范围
+      const baseValue = Math.abs(minValue) || 1
+      yAxisMin = minValue - baseValue * 0.2
+      yAxisMax = maxValue + baseValue * 0.2
+    }
+  }
 
   // 如果有预测数据标记，分别处理历史和预测数据
   let series = []
@@ -521,8 +593,20 @@ function generateChartOption({ name, unit, time, data, isPredicted = null, timeT
       formatter: function (params) {
         let result = `${params[0].axisValue}<br/>`
         params.forEach(param => {
-          const value = param.value === null ? '暂无数据' : param.value
-          result += `${param.seriesName}: ${value}<br/>`
+          if (param.value === null || param.value === undefined) {
+            result += `${param.seriesName}: 暂无数据<br/>`
+          } else {
+            // 格式化数值显示
+            let formattedValue
+            if (Math.abs(param.value) >= 1000) {
+              formattedValue = param.value.toFixed(0)
+            } else if (Math.abs(param.value) >= 10) {
+              formattedValue = param.value.toFixed(1)
+            } else {
+              formattedValue = param.value.toFixed(2)
+            }
+            result += `${param.seriesName}: ${formattedValue}${unit}<br/>`
+          }
         })
         return result
       }
@@ -546,11 +630,22 @@ function generateChartOption({ name, unit, time, data, isPredicted = null, timeT
     yAxis: {
       type: 'value',
       name: unit,
+      min: yAxisMin,
+      max: yAxisMax,
       nameTextStyle: {
         fontSize: 10
       },
       axisLabel: {
-        formatter: '{value}',
+        formatter: function(value) {
+          // 根据数值大小选择合适的格式
+          if (Math.abs(value) >= 1000) {
+            return value.toFixed(0)
+          } else if (Math.abs(value) >= 10) {
+            return value.toFixed(1)
+          } else {
+            return value.toFixed(2)
+          }
+        },
         fontSize: 10
       },
       splitLine: {
