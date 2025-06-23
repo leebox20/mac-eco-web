@@ -296,6 +296,8 @@ const updateChart = (index) => {
       '出口金额': 'export',
       '进口金额': 'import',
       '房地产投资': 'realestate',
+      '制造业投资': 'manufacturing',
+      '基础设施投资': 'infrastructure',
       'M2货币供应量': 'm2',
       '社会融资规模': 'financing'
     }
@@ -505,7 +507,7 @@ const loadData = async () => {
   try {
     console.log('开始从新API加载首页数据...')
 
-    // 1. 获取关键经济指标数据
+    // 1. 获取关键经济指标数据（用于顶部卡片显示）
     const keyIndicatorsResponse = await axios.get(`${API_BASE_URL}/api/key-indicators`)
     console.log('关键指标API响应:', keyIndicatorsResponse.data)
 
@@ -525,7 +527,17 @@ const loadData = async () => {
 
     const gdpData = gdpResponse.data
 
-    // 3. 处理GDP季度数据
+    // 3. 获取关键指标时间序列数据（用于图表显示）
+    const seriesResponse = await axios.get(`${API_BASE_URL}/api/key-indicators-series`)
+    console.log('关键指标时间序列API响应:', seriesResponse.data)
+
+    if (!seriesResponse.data) {
+      throw new Error('关键指标时间序列API返回数据格式错误')
+    }
+
+    const seriesData = seriesResponse.data
+
+    // 4. 处理GDP季度数据
     console.log('原始GDP数据:', gdpData)
 
     // 确保GDP数据是季度格式，如果API返回了错误格式，使用默认数据
@@ -541,11 +553,11 @@ const loadData = async () => {
       const allQuarters = gdpData.quarters
       const allValues = gdpData.values
 
-      // 强制根据当前时间判断，不使用API返回的is_predicted数据
-      // 当前时间：2025年6月3日，所以2025Q2及以后是预测数据（Q2包含6月，从6月开始都是预测）
+      // 前端控制预测时间点：从2025Q2开始为预测数据
       const allIsPredicted = allQuarters.map(q => {
-        // 解析季度，判断是否为预测数据
-        if (q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4')) {
+        // 2025Q2及以后为预测数据
+        if (q.includes('2025Q2') || q.includes('2025Q3') || q.includes('2025Q4') ||
+            q.includes('2026') || q.includes('2027') || q.includes('2028')) {
           return true
         }
         return false
@@ -565,15 +577,15 @@ const loadData = async () => {
       }
 
       console.log(`GDP数据：显示最近${displayCount}个季度，从${gdpQuarterlyData.dates[0]}到${gdpQuarterlyData.dates[gdpQuarterlyData.dates.length-1]}`)
-      console.log('首页GDP isPredicted数据:', allIsPredicted.slice(startIndex))
+      console.log('首页GDP isPredicted数据 (前端控制，2025Q2开始为预测):', allIsPredicted.slice(startIndex))
     } else {
-      // 使用默认的季度数据
-      console.log('GDP API数据格式不正确，使用默认季度数据')
+      // 使用默认的季度数据（最近2年）
+      console.log('GDP API数据格式不正确，使用默认季度数据（2025Q2开始为预测）')
       gdpQuarterlyData = {
-        dates: ['2023Q3', '2023Q4', '2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2', '2025Q3', '2025Q4'],
-        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.4, 5.4, 4.857564, 5.492128, 5.112863],
-        isPredicted: [false, false, false, false, false, false, false, true, true, true],
-        confidenceInterval: [null, null, null, null, null, null, null, [4.821547, 4.893581], [5.464386, 5.519870], [5.065357, 5.160369]]
+        dates: ['2023Q3', '2023Q4', '2024Q1', '2024Q2', '2024Q3', '2024Q4', '2025Q1', '2025Q2'],
+        values: [4.9, 5.2, 5.3, 4.7, 4.6, 5.4, 5.4, 4.857564],
+        isPredicted: [false, false, false, false, false, false, false, true],
+        confidenceInterval: [null, null, null, null, null, null, null, [4.821547, 4.893581]]
       }
     }
 
@@ -583,8 +595,8 @@ const loadData = async () => {
 
     console.log('处理后的GDP季度数据:', seasonalData.value.gdp)
 
-    // 4. 处理月度数据（从关键指标中提取）
-    const monthlyIndicators = keyData.monthly_indicators || []
+    // 5. 处理月度数据（使用新的时间序列API）
+    console.log('处理月度时间序列数据:', seriesData)
 
     // 初始化月度数据结构
     monthlyData.value = {
@@ -596,11 +608,13 @@ const loadData = async () => {
       export: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
       import: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
       realestate: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+      manufacturing: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
+      infrastructure: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
       m2: { dates: [], values: [], isPredicted: [], confidenceInterval: [] },
       financing: { dates: [], values: [], isPredicted: [], confidenceInterval: [] }
     }
 
-    // 映射月度指标到对应的数据结构
+    // 映射月度指标到对应的数据结构（根据新API规范更新）
     const indicatorMapping = {
       '社会消费品零售总额': 'retail',
       'CPI': 'cpi',
@@ -610,156 +624,98 @@ const loadData = async () => {
       '出口金额': 'export',
       '进口金额': 'import',
       '房地产投资': 'realestate',
+      '制造业投资': 'manufacturing',
+      '基础设施投资': 'infrastructure',
       'M2货币供应量': 'm2',
       '社会融资规模': 'financing'
     }
 
-    // 处理每个月度指标 - 创建时间序列数据
-    monthlyIndicators.forEach(indicator => {
-      const key = indicatorMapping[indicator.name]
-      if (key && monthlyData.value[key]) {
-        // 为每个指标创建一个完整的时间序列（2024年1月到2025年12月）
-        const dates = []
-        const values = []
-        const isPredicted = []
-        const confidenceInterval = []
+    // 处理每个月度指标 - 使用新API的时间序列数据
+    if (seriesData.indicators && Array.isArray(seriesData.indicators)) {
+      seriesData.indicators.forEach(indicator => {
+        const key = indicatorMapping[indicator.name]
+        if (key && monthlyData.value[key] && indicator.data && Array.isArray(indicator.data)) {
+          // 过滤最近2年的数据（2023年6月至今，约24个月）
+          const currentDate = new Date()
+          const currentYear = currentDate.getFullYear()
+          const currentMonth = currentDate.getMonth() + 1
 
-        // 生成2024年1月到2025年12月的数据
-        // 当前时间：2025年6月3日，所以5月及之前是历史数据，6月及之后是预测数据
-        const currentYear = 2025
-        const currentMonth = 5  // 历史数据到5月，6月开始是预测
+          // 计算2年前的年月
+          let cutoffYear = currentYear - 2
+          let cutoffMonth = currentMonth
 
-        for (let year = 2024; year <= 2025; year++) {
-          const endMonth = year === 2025 ? 12 : 12  // 2024年全年，2025年到12月
-          for (let month = 1; month <= endMonth; month++) {
-            const dateStr = `${year}-${month.toString().padStart(2, '0')}`
-            dates.push(dateStr)
+          // 如果当前是上半年，则从前年的同月开始；如果是下半年，则从前年的同月开始
+          const cutoffDate = `${cutoffYear}-${cutoffMonth.toString().padStart(2, '0')}`
 
-            // 判断是历史数据还是预测数据
-            const isHistorical = year < currentYear || (year === currentYear && month <= currentMonth)
+          console.log(`${indicator.name} 数据过滤：从 ${cutoffDate} 开始显示最近2年数据`)
 
-            // 如果是当前指标的日期，使用实际数据
-            if (dateStr === indicator.date) {
-              // 对社会融资规模特殊处理（转换为万亿元）
-              if (indicator.name === '社会融资规模') {
-                values.push(indicator.value / 10000) // 转换为万亿元
-                // 转换置信区间
-                if (indicator.confidence_interval) {
-                  confidenceInterval.push([
-                    indicator.confidence_interval[0] / 10000,
-                    indicator.confidence_interval[1] / 10000
-                  ])
-                } else {
-                  confidenceInterval.push(null)
-                }
+          const filteredData = indicator.data.filter(dataPoint => {
+            return dataPoint.date >= cutoffDate
+          })
+
+          // 直接使用API返回的时间序列数据
+          const dates = []
+          const values = []
+          const isPredicted = []
+          const confidenceInterval = []
+
+          filteredData.forEach(dataPoint => {
+            // 转换日期格式从 "YYYY-MM" 到 "YYYY-MM"（保持一致）
+            dates.push(dataPoint.date)
+
+            // 对社会融资规模特殊处理（转换为万亿元）
+            if (indicator.name === '社会融资规模' && indicator.unit === '亿元') {
+              values.push(dataPoint.value / 10000) // 转换为万亿元
+              // 转换置信区间
+              if (dataPoint.confidence_interval) {
+                confidenceInterval.push([
+                  dataPoint.confidence_interval[0] / 10000,
+                  dataPoint.confidence_interval[1] / 10000
+                ])
               } else {
-                values.push(indicator.value)
-                // 使用API返回的置信区间
-                confidenceInterval.push(indicator.confidence_interval || null)
+                confidenceInterval.push(null)
               }
-              // 强制使用我们的时间判断逻辑，不使用API返回的is_predicted
-              isPredicted.push(!isHistorical)
             } else {
-              // 生成基于当前值的历史/预测模拟数据
-              let simulatedValue
-
-              // 对社会融资规模特殊处理（绝对数值，单位万亿元）
-              if (indicator.name === '社会融资规模') {
-                // 社会融资规模的基准值（万亿元）
-                const baseValue = indicator.value / 10000 // 转换为万亿元
-
-                if (isHistorical) {
-                  // 历史数据：基于月份生成合理的历史值
-                  const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
-                  // 历史数据在基准值附近波动，越早的数据稍微小一些
-                  const historicalTrend = -monthsFromCurrent * 0.02 // 每月递减0.02万亿
-                  const randomVariation = (Math.random() - 0.5) * 0.5 // ±0.25万亿的随机波动
-                  simulatedValue = Math.max(0.5, baseValue + historicalTrend + randomVariation)
-                  confidenceInterval.push(null)
-                } else {
-                  // 预测数据：基于当前值的合理预测
-                  const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
-                  const predictionTrend = monthsFromCurrent * 0.03 // 每月递增0.03万亿
-                  const randomVariation = (Math.random() - 0.5) * 0.3 // ±0.15万亿的随机波动
-                  simulatedValue = baseValue + predictionTrend + randomVariation
-
-                  // 为预测数据生成置信区间
-                  if (indicator.confidence_interval) {
-                    const intervalWidth = (indicator.confidence_interval[1] - indicator.confidence_interval[0]) / 10000
-                    confidenceInterval.push([
-                      simulatedValue - intervalWidth / 2,
-                      simulatedValue + intervalWidth / 2
-                    ])
-                  } else {
-                    // 生成默认置信区间（±5%）
-                    confidenceInterval.push([
-                      simulatedValue * 0.95,
-                      simulatedValue * 1.05
-                    ])
-                  }
-                }
-              } else {
-                // 其他指标的原有逻辑（百分比指标）
-                const variation = (Math.random() - 0.5) * 2 // -1 到 1 的变化
-                simulatedValue = indicator.value + variation
-
-                if (isHistorical) {
-                  // 历史数据：添加一些历史趋势
-                  const monthsFromCurrent = (currentYear - year) * 12 + (currentMonth - month)
-                  const trendFactor = monthsFromCurrent * 0.05 // 越早的数据变化稍大
-                  simulatedValue += (Math.random() - 0.5) * trendFactor
-                  confidenceInterval.push(null)
-                } else {
-                  // 预测数据：基于当前值的合理预测
-                  const monthsFromCurrent = (year - currentYear) * 12 + (month - currentMonth)
-                  const predictionVariation = monthsFromCurrent * 0.1 // 预测越远变化越大
-                  simulatedValue += (Math.random() - 0.5) * predictionVariation
-
-                  // 为预测数据生成置信区间（如果原始数据有的话）
-                  if (indicator.confidence_interval) {
-                    const intervalWidth = indicator.confidence_interval[1] - indicator.confidence_interval[0]
-                    confidenceInterval.push([
-                      simulatedValue - intervalWidth / 2,
-                      simulatedValue + intervalWidth / 2
-                    ])
-                  } else {
-                    confidenceInterval.push(null)
-                  }
-                }
-              }
-
-              values.push(simulatedValue)
-              isPredicted.push(!isHistorical)
+              values.push(dataPoint.value)
+              confidenceInterval.push(dataPoint.confidence_interval || null)
             }
+
+            // 直接使用API返回的is_predicted字段（2025-06开始为预测数据）
+            isPredicted.push(dataPoint.is_predicted)
+          })
+
+          monthlyData.value[key] = {
+            dates,
+            values,
+            isPredicted,
+            confidenceInterval
           }
+
+          // 统计历史数据和预测数据的数量
+          const historicalCount = isPredicted.filter(p => !p).length
+          const predictedCount = isPredicted.filter(p => p).length
+
+          console.log(`${indicator.name} 时间序列数据处理完成:`, {
+            原始数据点: indicator.data.length,
+            过滤后数据点: dates.length,
+            日期范围: dates.length > 0 ? `${dates[0]} 到 ${dates[dates.length - 1]}` : '无数据',
+            历史数据: `${historicalCount}个月`,
+            预测数据: `${predictedCount}个月 (从2025-06开始)`,
+            单位: indicator.unit,
+            数据源: '新API时间序列（最近2年）'
+          })
+        } else {
+          console.warn(`指标 ${indicator.name} 无法映射到数据结构或数据格式错误`)
         }
+      })
+    } else {
+      console.warn('时间序列API返回数据格式错误，indicators不是数组')
+    }
 
-        monthlyData.value[key] = {
-          dates,
-          values,
-          isPredicted,
-          confidenceInterval
-        }
-
-        // 统计历史数据和预测数据的数量
-        const historicalCount = isPredicted.filter(p => !p).length
-        const predictedCount = isPredicted.filter(p => p).length
-
-        console.log(`${indicator.name} 数据生成完成:`, {
-          总数据点: dates.length,
-          日期范围: `${dates[0]} 到 ${dates[dates.length - 1]}`,
-          历史数据: `${historicalCount}个月 (2024/01-2025/05)`,
-          预测数据: `${predictedCount}个月 (2025/06-2025/12)`,
-          实际值位置: dates.indexOf(indicator.date),
-          实际值: indicator.value
-        })
-      }
-    })
-
-    // 5. 更新经济指标显示值
+    // 6. 更新经济指标显示值（使用关键指标API的数据）
     updateEconomicIndicators(keyData)
 
-    // 6. 初始化图表
+    // 7. 初始化图表
     setTimeout(() => {
       if (chartInstance) {
         updateChart(activeTabIndex.value)
@@ -769,6 +725,7 @@ const loadData = async () => {
     console.log('首页数据加载完成')
     console.log('GDP数据:', seasonalData.value)
     console.log('月度数据:', monthlyData.value)
+    console.log('时间序列数据来源:', seriesData.data_source)
 
   } catch (error) {
     console.error('加载首页数据失败:', error)
@@ -888,28 +845,52 @@ const useDefaultData = () => {
 
   monthlyData.value = {
     retail: {
-      dates: ['2024-09', '2024-10', '2024-11', '2024-12'],
-      values: [3.2, 4.8, 5.5, 6.25],
-      isPredicted: [false, false, false, true],
-      confidenceInterval: [null, null, null, null]
+      dates: ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12',
+              '2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06', '2024-07',
+              '2024-08', '2024-09', '2024-10', '2024-11', '2024-12', '2025-01', '2025-02',
+              '2025-03', '2025-04', '2025-05', '2025-06'],
+      values: [3.1, 2.5, 4.6, 5.5, 7.6, 10.1, 7.4, 5.5, 5.5, 3.1, 2.3, 3.7, 2.0, 2.7,
+               2.1, 3.2, 4.8, 5.5, 6.25, 5.8, 5.2, 4.9, 4.5, 4.2, 4.0],
+      isPredicted: [false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true],
+      confidenceInterval: Array(25).fill(null)
     },
     cpi: {
-      dates: ['2024-09', '2024-10', '2024-11', '2024-12'],
-      values: [0.4, 0.3, 0.2, 0.57],
-      isPredicted: [false, false, false, true],
-      confidenceInterval: [null, null, null, null]
+      dates: ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12',
+              '2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06', '2024-07',
+              '2024-08', '2024-09', '2024-10', '2024-11', '2024-12', '2025-01', '2025-02',
+              '2025-03', '2025-04', '2025-05', '2025-06'],
+      values: [0.0, -0.3, 0.1, -0.2, -0.2, -0.5, 0.7, 0.1, 0.7, 0.1, 0.3, 0.3, 0.2, 0.5,
+               0.6, 0.4, 0.3, 0.2, 0.57, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+      isPredicted: [false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true],
+      confidenceInterval: Array(25).fill(null)
     },
     ppi: {
-      dates: ['2024-09', '2024-10', '2024-11', '2024-12'],
-      values: [-2.8, -2.9, -2.5, -2.0],
-      isPredicted: [false, false, false, true],
-      confidenceInterval: [null, null, null, null]
+      dates: ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12',
+              '2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06', '2024-07',
+              '2024-08', '2024-09', '2024-10', '2024-11', '2024-12', '2025-01', '2025-02',
+              '2025-03', '2025-04', '2025-05', '2025-06'],
+      values: [-5.4, -4.4, -3.0, -2.5, -2.6, -3.0, -2.7, -2.5, -2.7, -2.8, -2.5, -1.4,
+               -0.8, -0.8, -1.8, -2.8, -2.9, -2.5, -2.0, -1.8, -1.5, -1.2, -1.0, -0.8, -0.5],
+      isPredicted: [false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true],
+      confidenceInterval: Array(25).fill(null)
     },
     investment: {
-      dates: ['2024-09', '2024-10', '2024-11', '2024-12'],
-      values: [3.4, 3.5, 3.6, 3.75],
-      isPredicted: [false, false, false, true],
-      confidenceInterval: [null, null, null, null]
+      dates: ['2023-06', '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12',
+              '2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06', '2024-07',
+              '2024-08', '2024-09', '2024-10', '2024-11', '2024-12', '2025-01', '2025-02',
+              '2025-03', '2025-04', '2025-05', '2025-06'],
+      values: [3.8, 3.4, 3.2, 3.1, 2.9, 2.9, 3.0, 4.2, 4.2, 4.5, 4.2, 4.0, 3.9, 3.6,
+               3.4, 3.4, 3.4, 3.3, 3.75, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3],
+      isPredicted: [false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, false, false, false, false, false, false,
+                    false, false, false, false, true],
+      confidenceInterval: Array(25).fill(null)
     }
   }
 }
