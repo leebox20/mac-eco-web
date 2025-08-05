@@ -1,3 +1,4 @@
+
 import os
 import logging
 from typing import List, Optional
@@ -122,7 +123,7 @@ async def process_all_data():
             
             df.sort_index(inplace=True)
             
-            # 清理数��：移除逗号，转换为数值类型，处理无效值
+            # 清理数据：移除逗号，转换为数值类型，处理无效值
             for col in df.columns:
                 df[col] = df[col].apply(lambda x: str(x).replace(',', '') if pd.notnull(x) else x)
                 df[col] = pd.to_numeric(df[col], errors='coerce')  # 使用coerce将无效值转换为NaN
@@ -194,7 +195,7 @@ async def background_cache_task():
         
         # 获取所有需要缓存的页面
         all_pages = set(range(1, total_pages + 1))
-        # 排除已经缓��的优先页面
+        # 排除已经缓存的优先页面
         priority_pages = set(list(range(1, 21)) + list(range(max(21, total_pages - 19), total_pages + 1)))
         remaining_pages = all_pages - priority_pages
         
@@ -228,9 +229,11 @@ app = FastAPI(lifespan=lifespan)
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://120.48.150.254:3000", "http://120.48.150.254:3100",
+        "http://106.12.206.107:8080",
+     "http://localhost:3000", "http://localhost:3100", "http://127.0.0.1:3000", "http://127.0.0.1:3100"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -369,7 +372,7 @@ async def process_stream(stream, conversation_id: str):
             logger.debug(f"Received chunk: {chunk[:100]}...")  # Log the first 100 characters of each chunk
             yield chunk  # 返回原始数据块
 
-            # 处理数据块��累积完整响应
+            # 处理数据块累积完整响应
             if chunk.startswith('data: '):
                 try:
                     data = json.loads(chunk[6:])
@@ -660,132 +663,46 @@ async def get_gdp_data():
     try:
         logger.info("开始获取GDP数据...")
 
-        # 1. 优先读取含区间的季度数据文件
-        quarterly_interval_file = '../update/季度关键数据预测结果含区间.csv'
-        gdp_complete_file = 'data/gdp_complete_data.csv'
+        # 强制使用update目录下的GDP完整数据文件
+        gdp_complete_file = 'update/gdp_complete_data.csv'
 
-        df_final = None
-
-        # 尝试读取含区间的季度数据
-        if os.path.exists(quarterly_interval_file):
-            try:
-                # 尝试不同编码读取含区间文件
-                for encoding in ['utf-8', 'gbk', 'gb2312']:
-                    try:
-                        df_quarterly = pd.read_csv(quarterly_interval_file, encoding=encoding)
-                        logger.info(f"成功读取季度区间数据，编码: {encoding}，形状: {df_quarterly.shape}")
-                        break
-                    except UnicodeDecodeError:
-                        continue
-
-                if df_quarterly is not None and not df_quarterly.empty:
-                    # 处理含区间的季度数据
-                    processed_quarterly = []
-
-                    for _, row in df_quarterly.iterrows():
-                        if pd.isna(row.iloc[0]) or str(row.iloc[0]).strip() == '':
-                            continue
-
-                        # 解析时间戳
-                        timestamp_str = str(row.iloc[0]).strip()
-                        try:
-                            if '/' in timestamp_str:
-                                # 处理 2025/6/30 格式
-                                parts = timestamp_str.split('/')
-                                if len(parts) >= 3:
-                                    year, month, day = parts[0], parts[1], parts[2]
-                                    date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-
-                                    # 确定季度
-                                    month_int = int(month)
-                                    if month_int <= 3:
-                                        quarter = f"{year}Q1"
-                                    elif month_int <= 6:
-                                        quarter = f"{year}Q2"
-                                    elif month_int <= 9:
-                                        quarter = f"{year}Q3"
-                                    else:
-                                        quarter = f"{year}Q4"
-                            else:
-                                continue
-                        except:
-                            continue
-
-                        # 获取GDP值和置信区间
-                        gdp_value = None
-                        confidence_interval = None
-
-                        # 查找GDP相关列
-                        for col_idx, col_name in enumerate(df_quarterly.columns):
-                            if 'GDP' in str(col_name) and 'variation' not in str(col_name):
-                                gdp_value = row.iloc[col_idx]
-                                # 查找对应的variation列
-                                variation_col = f"{col_name}_variation"
-                                if variation_col in df_quarterly.columns:
-                                    variation = row[variation_col]
-                                    if pd.notna(variation) and pd.notna(gdp_value):
-                                        confidence_interval = float(variation)
-                                break
-
-                        if pd.notna(gdp_value):
-                            processed_quarterly.append({
-                                'date': date,
-                                'quarter': quarter,
-                                'gdp_value': float(gdp_value),
-                                'confidence_interval': confidence_interval,
-                                'is_predicted': True
-                            })
-
-                    # 如果有处理后的季度数据，读取历史数据并合并
-                    if processed_quarterly:
-                        if os.path.exists(gdp_complete_file):
-                            df_historical = pd.read_csv(gdp_complete_file, encoding='utf-8')
-                            # 只保留历史数据（非预测数据）
-                            df_historical = df_historical[~df_historical['is_predicted']].copy()
-
-                            # 合并历史数据和新的预测数据
-                            historical_data = df_historical.to_dict('records')
-                            all_data = historical_data + processed_quarterly
-
-                            # 创建最终DataFrame并去重
-                            df_final = pd.DataFrame(all_data)
-                            df_final['date'] = pd.to_datetime(df_final['date'])
-
-                            # 按季度去重，保留最新的数据
-                            df_final = df_final.drop_duplicates(subset=['quarter'], keep='last')
-                            df_final = df_final.sort_values('date').reset_index(drop=True)
-
-                            logger.info(f"合并数据完成：历史数据 {len(historical_data)} 条，新预测数据 {len(processed_quarterly)} 条，去重后 {len(df_final)} 条")
-                        else:
-                            # 只有新的预测数据
-                            df_final = pd.DataFrame(processed_quarterly)
-                            df_final['date'] = pd.to_datetime(df_final['date'])
-                            df_final = df_final.sort_values('date').reset_index(drop=True)
-
-                            logger.info(f"只使用新预测数据：{len(processed_quarterly)} 条")
-
-            except Exception as e:
-                logger.warning(f"处理季度区间数据失败: {str(e)}")
-
-        # 2. 如果没有成功处理含区间数据，使用原有的完整数据文件
-        if df_final is None:
+        if not os.path.exists(gdp_complete_file):
+            # 备用文件路径
+            gdp_complete_file = 'data/gdp_complete_data.csv'
             if not os.path.exists(gdp_complete_file):
                 raise HTTPException(status_code=404, detail="GDP数据文件不存在")
 
-            df_final = pd.read_csv(gdp_complete_file, encoding='utf-8')
-            logger.info("使用原有GDP完整数据文件")
+        # 直接读取GDP完整数据文件
+        df_final = pd.read_csv(gdp_complete_file, encoding='utf-8')
+        # 确保date列是datetime类型
+        df_final['date'] = pd.to_datetime(df_final['date'])
+        # 处理confidence_interval列
+        df_final['confidence_interval'] = df_final['confidence_interval'].fillna('')
+        logger.info(f"使用GDP完整数据文件: {gdp_complete_file}，共 {len(df_final)} 条记录")
 
-        # 3. 准备返回数据，处理置信区间格式
+        # 排序数据
+        df_final = df_final.sort_values('date').reset_index(drop=True)
+
+        # 准备返回数据，处理置信区间格式
         confidence_intervals_formatted = []
         for _, row in df_final.iterrows():
-            if pd.notna(row['confidence_interval']) and row['confidence_interval'] != 0:
-                # 将单个置信区间值转换为上下界数组
-                interval_value = float(row['confidence_interval'])
-                gdp_value = float(row['gdp_value'])
-                confidence_intervals_formatted.append([
-                    gdp_value - interval_value,
-                    gdp_value + interval_value
-                ])
+            confidence_interval = row['confidence_interval']
+            if pd.notna(confidence_interval) and confidence_interval != '' and confidence_interval != 0:
+                try:
+                    # 如果是字符串格式的数组，需要解析
+                    if isinstance(confidence_interval, str) and '[' in confidence_interval:
+                        import ast
+                        confidence_intervals_formatted.append(ast.literal_eval(confidence_interval))
+                    else:
+                        # 如果是单个数值，转换为上下界数组
+                        interval_value = float(confidence_interval)
+                        gdp_value = float(row['gdp_value'])
+                        confidence_intervals_formatted.append([
+                            gdp_value - interval_value,
+                            gdp_value + interval_value
+                        ])
+                except:
+                    confidence_intervals_formatted.append(None)
             else:
                 confidence_intervals_formatted.append(None)
 
@@ -821,7 +738,7 @@ async def get_monthly_prediction_data(
         logger.info(f"开始获取月度预测数据: page={page}, page_size={page_size}, search={search}")
 
         # 读取完整合并数据文件
-        merged_file = '../update/月度数据完整合并结果.csv'
+        merged_file = 'update/月度数据完整合并结果.csv'
         if not os.path.exists(merged_file):
             raise HTTPException(status_code=404, detail="月度数据完整合并文件不存在")
 
@@ -841,10 +758,15 @@ async def get_monthly_prediction_data(
         # 处理数据
         df = df.dropna(how='all')  # 删除全空行
 
-        # 检查第一列的名称，可能是 'timestamp' 或 'date'
+        # 检查第一列的名称，可能是 'timestamp' 或 'date' 或 '指标名称'
         time_column = df.columns[0]
-        if time_column not in ['timestamp', 'date']:
+        if time_column not in ['timestamp', 'date', '指标名称']:
             raise HTTPException(status_code=500, detail=f"时间列名称错误: {time_column}")
+
+        # 如果时间列是 '指标名称'，需要特殊处理日期格式
+        if time_column == '指标名称':
+            # 将 '2024M6' 格式转换为 '2024-06'
+            df[time_column] = df[time_column].str.replace('M', '-', regex=False)
 
         df[time_column] = pd.to_datetime(df[time_column])
 
@@ -873,23 +795,47 @@ async def get_monthly_prediction_data(
                     date_str = row[time_column].strftime('%Y-%m-%d')
                     times.append(date_str)
 
-                    # 处理数值格式：去除逗号分隔符和空格
+                    # 处理数值格式：去除逗号分隔符和空格，并检查预测标记
                     value_str = str(row[column]).strip()
-                    if value_str and value_str != 'nan':
-                        try:
-                            # 移除逗号分隔符
-                            clean_value = value_str.replace(',', '')
-                            values.append(float(clean_value))
-                        except (ValueError, TypeError):
-                            # 如果转换失败，跳过这个数据点
-                            times.pop()  # 移除刚添加的时间
-                            continue
-                    else:
-                        times.pop()  # 移除刚添加的时间
+                    is_pred = False
+
+                    # 调试日志：记录2026年数据处理
+                    if '2026' in date_str:
+                        logger.info(f"处理2026年数据: {date_str}, 原始值: {value_str}, 列名: {column}")
+
+                    if not value_str or value_str.lower() == 'nan':
+                        if '2026' in date_str:
+                            logger.info(f"跳过2026年数据(空值): {date_str}")
+                        times.pop()
                         continue
 
-                    # 判断是否为预测数据（2025年6月之后）
-                    is_pred = row[time_column] >= pd.Timestamp('2025-06-01')
+                    # 检查并处理(预测)标记
+                    if '(预测)' in value_str:
+                        is_pred = True
+                        value_str = value_str.replace('(预测)', '').strip()
+
+                    # 移除逗号并尝试转换为浮点数
+                    try:
+                        clean_value = value_str.replace(',', '')
+                        if not clean_value:
+                            if '2026' in date_str:
+                                logger.info(f"跳过2026年数据(清理后为空): {date_str}")
+                            times.pop()
+                            continue
+                        float_value = float(clean_value)
+                        values.append(float_value)
+
+                        # 调试日志：记录2026年数据成功处理
+                        if '2026' in date_str:
+                            logger.info(f"成功处理2026年数据: {date_str} = {float_value}")
+
+                    except (ValueError, TypeError) as e:
+                        # 如果转换失败，跳过这个数据点
+                        if '2026' in date_str:
+                            logger.info(f"跳过2026年数据(转换失败): {date_str}, 错误: {e}")
+                        times.pop()
+                        continue
+
                     is_predicted.append(is_pred)
 
             # 如果该列没有任何有效数据，跳过
@@ -942,25 +888,82 @@ async def get_key_indicators():
     try:
         logger.info("开始获取关键经济指标数据...")
 
-        # 1. 获取GDP数据
+        # 获取当前时间信息
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+
+        # 经济数据通常滞后发布，需要获取实际可用的最新数据时间点
+        # GDP季度数据：滞后1个季度发布
+        # 月度数据：滞后1个月发布
+
+        # 确定可获得的最新季度数据
+        if current_month <= 3:
+            # 1-3月，最新季度数据是去年Q4
+            latest_quarter = f"{current_year-1}Q4"
+        elif current_month <= 6:
+            # 4-6月，最新季度数据是今年Q1
+            latest_quarter = f"{current_year}Q1"
+        elif current_month <= 9:
+            # 7-9月，最新季度数据是今年Q2
+            latest_quarter = f"{current_year}Q2"
+        else:
+            # 10-12月，最新季度数据是今年Q3
+            latest_quarter = f"{current_year}Q3"
+
+        # 确定可获得的最新月度数据
+        if current_month == 1:
+            # 1月，最新月度数据是去年12月
+            latest_month_year = current_year - 1
+            latest_month_num = 12
+        else:
+            # 其他月份，最新月度数据是上个月
+            latest_month_year = current_year
+            latest_month_num = current_month - 1
+
+        latest_month_str = f"{latest_month_year}-{latest_month_num:02d}"
+
+        logger.info(f"当前时间: {current_date.strftime('%Y-%m-%d')}")
+        logger.info(f"最新可用季度数据: {latest_quarter}")
+        logger.info(f"最新可用月度数据: {latest_month_str}")
+
+        # 1. 获取GDP数据 - 返回最新可用季度的数据
         gdp_file = 'data/gdp_complete_data.csv'
         gdp_data = None
         if os.path.exists(gdp_file):
             df_gdp = pd.read_csv(gdp_file, encoding='utf-8')
-            gdp_data = {
-                'name': 'GDP不变价:当季同比',
-                'value': float(df_gdp['gdp_value'].iloc[-1]),
-                'quarter': df_gdp['quarter'].iloc[-1],
-                'unit': '%',
-                'is_predicted': bool(df_gdp['is_predicted'].iloc[-1])
-            }
 
-        # 2. 获取其他月度指标数据
+            # 查找最新可用季度的数据
+            latest_quarter_data = df_gdp[df_gdp['quarter'] == latest_quarter]
+            if not latest_quarter_data.empty:
+                # 找到最新可用季度数据
+                row = latest_quarter_data.iloc[-1]  # 如果有多行，取最后一行
+                gdp_data = {
+                    'name': 'GDP不变价:当季同比',
+                    'value': float(row['gdp_value']),
+                    'quarter': row['quarter'],
+                    'unit': '%',
+                    'is_predicted': bool(row['is_predicted'])
+                }
+                logger.info(f"找到最新可用季度 {latest_quarter} 的GDP数据: {gdp_data['value']}%")
+            else:
+                # 如果没找到目标季度，查找最近的季度数据
+                logger.warning(f"未找到目标季度 {latest_quarter} 的GDP数据，使用最新可用数据")
+                latest_row = df_gdp.iloc[-1]
+                gdp_data = {
+                    'name': 'GDP不变价:当季同比',
+                    'value': float(latest_row['gdp_value']),
+                    'quarter': latest_row['quarter'],
+                    'unit': '%',
+                    'is_predicted': bool(latest_row['is_predicted'])
+                }
+
+        # 2. 获取其他月度指标数据 - 返回最新可用月份的数据
         monthly_indicators = []
 
         # 优先使用含区间的月度数据文件
-        monthly_file_with_interval = '../update/月度关键数据预测结果含区间.csv'
-        monthly_file_original = '../update/月度关键数据预测结果.csv'
+        monthly_file_with_interval = 'update/月度关键数据预测结果含区间.csv'
+        monthly_file_original = 'update/月度关键数据预测结果.csv'
         merged_file = 'data/DATAMERGED-20241203-完整数据集-修复版.csv'
 
         # 按优先级尝试读取文件
@@ -998,72 +1001,125 @@ async def get_key_indicators():
             logger.info(f"使用合并数据文件，形状: {df_monthly.shape}")
 
         if df_monthly is not None and not df_monthly.empty:
-            # 获取最新一行数据
-            latest_row = df_monthly.iloc[-1]
+            # 查找最新可用月份的数据，而不是最新一行
+            target_row = None
+            target_date = latest_month_str
 
-            # 处理日期格式
+            # 根据数据源类型查找最新可用月份数据
             if data_source == 'merged':
-                latest_date = latest_row['date'].strftime('%Y-%m')
+                # 对于合并文件，直接按日期查找
+                df_monthly['date'] = pd.to_datetime(df_monthly['date'])
+                target_month_data = df_monthly[df_monthly['date'].dt.strftime('%Y-%m') == latest_month_str]
+                if not target_month_data.empty:
+                    target_row = target_month_data.iloc[-1]  # 如果有多行，取最后一行
+                    target_date = target_row['date'].strftime('%Y-%m')
+                    logger.info(f"找到最新可用月份 {latest_month_str} 的数据")
+                else:
+                    logger.warning(f"未找到最新可用月份 {latest_month_str} 的数据，使用最新可用数据")
+                    target_row = df_monthly.iloc[-1]
+                    target_date = target_row['date'].strftime('%Y-%m')
             else:
-                latest_date_raw = latest_row.iloc[0]  # 第一列是日期
-                if isinstance(latest_date_raw, str):
-                    try:
-                        if 'M' in latest_date_raw:
-                            # 处理 2025M05 格式
-                            year, month = latest_date_raw.split('M')
-                            latest_date = f"{year}-{month.zfill(2)}"
-                        elif '/' in latest_date_raw:
-                            # 处理 2025/6/30 格式
-                            parts = latest_date_raw.split('/')
-                            if len(parts) >= 2:
-                                latest_date = f"{parts[0]}-{parts[1].zfill(2)}"
-                        else:
-                            latest_date = pd.to_datetime(latest_date_raw).strftime('%Y-%m')
-                    except:
-                        latest_date = str(latest_date_raw)
+                # 对于其他文件格式，需要解析第一列的日期
+                found_target_month = False
+                for idx, row in df_monthly.iterrows():
+                    date_raw = row.iloc[0]  # 第一列是日期
+                    if isinstance(date_raw, str):
+                        try:
+                            parsed_date = None
+                            if 'M' in date_raw:
+                                # 处理 2025M06 格式
+                                year, month = date_raw.split('M')
+                                parsed_date = f"{year}-{month.zfill(2)}"
+                            elif '/' in date_raw:
+                                # 处理 2025/6/30 格式
+                                parts = date_raw.split('/')
+                                if len(parts) >= 2:
+                                    parsed_date = f"{parts[0]}-{parts[1].zfill(2)}"
+                            else:
+                                parsed_date = pd.to_datetime(date_raw).strftime('%Y-%m')
 
-            # 定义关键指标映射
-            key_indicators_mapping = [
-                {'column': '中国:社会消费品零售总额:当月同比', 'name': '社会消费品零售总额', 'unit': '%'},
-                {'column': '中国:CPI:当月同比', 'name': 'CPI', 'unit': '%'},
-                {'column': '中国:PPI:全部工业品:当月同比', 'name': 'PPI', 'unit': '%'},
-                {'column': '中国:工业增加值:规模以上工业企业:当月同比', 'name': '工业增加值', 'unit': '%'},
-                {'column': '固定资产投资完成额:累计同比', 'name': '固定资产投资', 'unit': '%'},
-                {'column': '中国:出口金额:当月同比', 'name': '出口金额', 'unit': '%'},
-                {'column': '中国:进口金额:当月同比', 'name': '进口金额', 'unit': '%'},
-                {'column': '房地产开发投资完成额:累计同比', 'name': '房地产投资', 'unit': '%'},
-                {'column': '中国:M2:同比', 'name': 'M2货币供应量', 'unit': '%'},
-                {'column': '中国:社会融资规模:当月值', 'name': '社会融资规模', 'unit': '亿元'}
-            ]
+                            if parsed_date == latest_month_str:
+                                target_row = row
+                                target_date = parsed_date
+                                found_target_month = True
+                                logger.info(f"找到最新可用月份 {latest_month_str} 的数据")
+                                break
+                        except:
+                            continue
 
-            for indicator in key_indicators_mapping:
-                column = indicator['column']
-                if column in df_monthly.columns:
-                    value = latest_row[column]
-                    if pd.notna(value):
-                        # 判断是否为预测数据
-                        if data_source == 'merged':
-                            is_predicted = latest_row['date'].year >= 2025
-                        else:
-                            is_predicted = '2025' in str(latest_date)
+                if not found_target_month:
+                    logger.warning(f"未找到最新可用月份 {latest_month_str} 的数据，使用最新可用数据")
+                    target_row = df_monthly.iloc[-1]
+                    # 解析最新数据的日期
+                    latest_date_raw = target_row.iloc[0]
+                    if isinstance(latest_date_raw, str):
+                        try:
+                            if 'M' in latest_date_raw:
+                                year, month = latest_date_raw.split('M')
+                                target_date = f"{year}-{month.zfill(2)}"
+                            elif '/' in latest_date_raw:
+                                parts = latest_date_raw.split('/')
+                                if len(parts) >= 2:
+                                    target_date = f"{parts[0]}-{parts[1].zfill(2)}"
+                            else:
+                                target_date = pd.to_datetime(latest_date_raw).strftime('%Y-%m')
+                        except:
+                            target_date = str(latest_date_raw)
 
-                        # 处理置信区间（仅当使用含区间文件时）
-                        confidence_interval = None
-                        if data_source == 'interval':
-                            variation_column = f"{column}_variation"
-                            if variation_column in df_monthly.columns:
-                                variation = latest_row[variation_column]
-                                if pd.notna(variation):
-                                    confidence_interval = [float(value) - float(variation), float(value) + float(variation)]
+            # 如果找到了目标行数据，处理各个指标
+            if target_row is not None:
+                # 定义关键指标映射
+                key_indicators_mapping = [
+                    {'column': '中国:社会消费品零售总额:当月同比', 'name': '社会消费品零售总额', 'unit': '%'},
+                    {'column': '中国:CPI:当月同比', 'name': 'CPI', 'unit': '%'},
+                    {'column': '中国:PPI:全部工业品:当月同比', 'name': 'PPI', 'unit': '%'},
+                    {'column': '中国:工业增加值:规模以上工业企业:当月同比', 'name': '工业增加值', 'unit': '%'},
+                    {'column': '固定资产投资完成额:累计同比', 'name': '固定资产投资', 'unit': '%'},
+                    {'column': '中国:出口金额:当月同比', 'name': '出口金额', 'unit': '%'},
+                    {'column': '中国:进口金额:当月同比', 'name': '进口金额', 'unit': '%'},
+                    {'column': '房地产开发投资完成额:累计同比', 'name': '房地产投资', 'unit': '%'},
+                    {'column': '中国:M2:同比', 'name': 'M2货币供应量', 'unit': '%'},
+                    {'column': '中国:社会融资规模:当月值', 'name': '社会融资规模', 'unit': '亿元'}
+                ]
 
-                        monthly_indicators.append({
-                            'name': indicator['name'],
-                            'value': float(value),
-                            'date': latest_date,
-                            'unit': indicator['unit'],
-                            'is_predicted': is_predicted,
-                            'confidence_interval': confidence_interval
-                        })
+                for indicator in key_indicators_mapping:
+                    column = indicator['column']
+                    if column in df_monthly.columns:
+                        value = target_row[column]
+                        if pd.notna(value):
+                            # 判断是否为预测数据 - 基于目标日期判断
+                            if data_source == 'merged':
+                                is_predicted = pd.to_datetime(target_date).year >= 2025 and pd.to_datetime(target_date).month >= 6
+                            else:
+                                # 2025年6月及以后为预测数据
+                                year_month = target_date.split('-')
+                                if len(year_month) == 2:
+                                    year, month = int(year_month[0]), int(year_month[1])
+                                    is_predicted = year > 2025 or (year == 2025 and month >= 6)
+                                else:
+                                    is_predicted = '2025' in str(target_date)
+
+                            # 处理置信区间（仅当使用含区间文件时）
+                            confidence_interval = None
+                            if data_source == 'interval':
+                                variation_column = f"{column}_variation"
+                                if variation_column in df_monthly.columns:
+                                    variation = target_row[variation_column]
+                                    if pd.notna(variation):
+                                        confidence_interval = [float(value) - float(variation), float(value) + float(variation)]
+
+                            monthly_indicators.append({
+                                'name': indicator['name'],
+                                'value': float(value),
+                                'date': target_date,
+                                'unit': indicator['unit'],
+                                'is_predicted': is_predicted,
+                                'confidence_interval': confidence_interval
+                            })
+
+                            logger.info(f"处理指标 {indicator['name']}: {value} ({target_date}), 预测数据: {is_predicted}")
+            else:
+                logger.warning("未找到有效的月度数据行")
 
         # 3. 组合返回数据
         result = {
@@ -1079,6 +1135,134 @@ async def get_key_indicators():
     except Exception as e:
         logger.error(f"获取关键指标数据失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取关键指标数据失败: {str(e)}")
+
+# 添加关键指标时间序列数据端点
+@app.get("/api/key-indicators-series")
+async def get_key_indicators_series():
+    """获取关键经济指标的完整时间序列数据"""
+    try:
+        logger.info("开始获取关键指标时间序列数据...")
+
+        # 优先使用含区间的月度数据文件
+        monthly_file_with_interval = 'update/月度关键数据预测结果含区间.csv'
+        
+        df_monthly = None
+        
+        # 尝试读取含区间的文件
+        if os.path.exists(monthly_file_with_interval):
+            for encoding in ['utf-8', 'gbk', 'gb2312']:
+                try:
+                    df_monthly = pd.read_csv(monthly_file_with_interval, encoding=encoding)
+                    logger.info(f"使用含区间数据文件，编码: {encoding}，形状: {df_monthly.shape}")
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+        if df_monthly is None or df_monthly.empty:
+            raise HTTPException(status_code=404, detail="未找到关键指标数据文件")
+
+        # 定义关键指标映射
+        key_indicators_mapping = [
+            {'column': '中国:社会消费品零售总额:当月同比', 'name': '社会消费品零售总额', 'unit': '%'},
+            {'column': '中国:CPI:当月同比', 'name': 'CPI', 'unit': '%'},
+            {'column': '中国:PPI:全部工业品:当月同比', 'name': 'PPI', 'unit': '%'},
+            {'column': '中国:工业增加值:规模以上工业企业:当月同比', 'name': '工业增加值', 'unit': '%'},
+            {'column': '固定资产投资完成额:累计同比', 'name': '固定资产投资', 'unit': '%'},
+            {'column': '中国:出口金额:当月同比', 'name': '出口金额', 'unit': '%'},
+            {'column': '中国:进口金额:当月同比', 'name': '进口金额', 'unit': '%'},
+            {'column': '房地产开发投资完成额:累计同比', 'name': '房地产投资', 'unit': '%'},
+            {'column': '固定资产投资完成额:制造业:累计同比', 'name': '制造业投资', 'unit': '%'},
+            {'column': '固定资产投资完成额:基础设施建设:累计同比', 'name': '基础设施投资', 'unit': '%'},
+            {'column': '中国:M2:同比', 'name': 'M2货币供应量', 'unit': '%'},
+            {'column': '中国:社会融资规模:当月值', 'name': '社会融资规模', 'unit': '亿元'}
+        ]
+
+        # 处理时间序列数据
+        indicators_series = []
+        
+        for indicator in key_indicators_mapping:
+            column = indicator['column']
+            if column in df_monthly.columns:
+                # 获取该指标的所有数据
+                series_data = []
+                
+                for idx, row in df_monthly.iterrows():
+                    timestamp_raw = row.iloc[0]  # 第一列是时间戳
+                    value = row[column]
+                    
+                    if pd.notna(value):
+                        # 处理时间格式
+                        try:
+                            if isinstance(timestamp_raw, str):
+                                if '/' in timestamp_raw:
+                                    # 处理 2025/6/30 格式
+                                    parts = timestamp_raw.split('/')
+                                    if len(parts) >= 2:
+                                        date_str = f"{parts[0]}-{parts[1].zfill(2)}"
+                                elif 'M' in timestamp_raw:
+                                    # 处理 2025M06 格式
+                                    year, month = timestamp_raw.split('M')
+                                    date_str = f"{year}-{month.zfill(2)}"
+                                else:
+                                    date_str = pd.to_datetime(timestamp_raw).strftime('%Y-%m')
+                            else:
+                                date_str = pd.to_datetime(timestamp_raw).strftime('%Y-%m')
+                        except:
+                            date_str = str(timestamp_raw)
+                        
+                        # 判断是否为预测数据（2025年6月及以后）
+                        try:
+                            year, month = date_str.split('-')
+                            year = int(year)
+                            month = int(month)
+                            is_predicted = year > 2025 or (year == 2025 and month >= 6)
+                        except:
+                            is_predicted = '2025' in date_str
+                        
+                        # 处理置信区间
+                        confidence_interval = None
+                        variation_column = f"{column}_variation"
+                        if variation_column in df_monthly.columns:
+                            variation = row[variation_column]
+                            if pd.notna(variation):
+                                confidence_interval = [
+                                    float(value) - float(variation), 
+                                    float(value) + float(variation)
+                                ]
+                        
+                        series_data.append({
+                            'date': date_str,
+                            'value': float(value),
+                            'is_predicted': is_predicted,
+                            'confidence_interval': confidence_interval
+                        })
+                
+                if series_data:
+                    # 按日期排序
+                    series_data.sort(key=lambda x: x['date'])
+                    
+                    indicators_series.append({
+                        'name': indicator['name'],
+                        'column': column,
+                        'unit': indicator['unit'],
+                        'data': series_data,
+                        'total_points': len(series_data)
+                    })
+
+        # 组合返回数据
+        result = {
+            'indicators': indicators_series,
+            'total_indicators': len(indicators_series),
+            'data_source': '月度关键数据预测结果含区间.csv',
+            'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        logger.info(f"关键指标时间序列数据获取完成，共 {len(indicators_series)} 个指标")
+        return result
+
+    except Exception as e:
+        logger.error(f"获取关键指标时间序列数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取关键指标时间序列数据失败: {str(e)}")
 
 # 添加新的路由处理函数
 @app.post("/api/gdp-analysis")
@@ -1181,6 +1365,128 @@ async def process_api(session, app_id, prediction_value, api_name):
             "app_id": app_id,
             "error": str(e)
         }
+
+# 添加宏观经济整体分析端点
+@app.post("/api/macro-analysis")
+async def analyze_macro_economy():
+    """获取所有关键经济指标并进行综合宏观分析"""
+    try:
+        logger.info("开始宏观经济整体分析...")
+        
+        # 1. 获取所有关键经济指标的最新数据
+        key_indicators = await get_key_indicators()
+        logger.info(f"获取到的关键指标数据: GDP={key_indicators.get('gdp')}, 月度指标数量={len(key_indicators.get('monthly_indicators', []))}")
+        
+        # 2. 构建分析输入文本
+        analysis_input = "请对以下中国宏观经济指标进行深度综合分析：\n\n"
+        
+        # 添加GDP数据
+        if key_indicators['gdp']:
+            gdp = key_indicators['gdp']
+            analysis_input += f"GDP增长率({gdp['quarter']}): {gdp['value']}%\n"
+        
+        # 添加月度指标数据
+        for indicator in key_indicators['monthly_indicators']:
+            analysis_input += f"{indicator['name']}({indicator['date']}): {indicator['value']}{indicator['unit']}"
+            if indicator.get('is_predicted'):
+                analysis_input += " [预测值]"
+            analysis_input += "\n"
+        
+        analysis_input += "\n请使用Markdown格式，从以下角度进行深度分析：\n\n"
+        analysis_input += "## 1. 宏观经济运行总体评估\n"
+        analysis_input += "请综合评价当前经济运行状况，包括增长态势、结构特征、主要亮点等。\n\n"
+        analysis_input += "## 2. 经济增长动能分析\n"
+        analysis_input += "### GDP增长表现\n"
+        analysis_input += "### 三驾马车协调性\n"
+        analysis_input += "- 消费：分析社会消费品零售总额数据\n"
+        analysis_input += "- 投资：分析固定资产投资、房地产投资、制造业投资等\n"
+        analysis_input += "- 出口：分析进出口贸易数据\n\n"
+        analysis_input += "## 3. 产业运行特征\n"
+        analysis_input += "### 工业生产\n"
+        analysis_input += "### 房地产市场\n"
+        analysis_input += "### 新兴产业发展\n\n"
+        analysis_input += "## 4. 价格走势分析\n"
+        analysis_input += "### 通胀形势（CPI/PPI）\n"
+        analysis_input += "### 价格传导机制\n\n"
+        analysis_input += "## 5. 金融环境评估\n"
+        analysis_input += "### 货币供应（M2）\n"
+        analysis_input += "### 社会融资规模\n"
+        analysis_input += "### 流动性状况\n\n"
+        analysis_input += "## 6. 风险因素与挑战\n"
+        analysis_input += "请列出主要风险点，每个风险点用###标题。\n\n"
+        analysis_input += "## 7. 政策建议\n"
+        analysis_input += "请提供具体可行的政策建议，使用有序列表。\n\n"
+        analysis_input += "## 8. 展望与结论\n"
+        analysis_input += "请对未来经济走势进行预判，并给出结论性观点。\n"
+        
+        logger.info(f"构建的分析输入文本长度: {len(analysis_input)}")
+        
+        # 3. 调用AI分析（使用第一个GDP分析API作为宏观分析API）
+        app_id = "31e13499-bc62-454e-9726-10318869d707"  # GDP数据分析流1
+        
+        async with aiohttp.ClientSession() as session:
+            # 获取对话ID
+            conv_result = await get_conversation_id(session, app_id)
+            logger.info(f"创建对话响应: {json.dumps(conv_result, ensure_ascii=False)[:200]}")
+            conversation_id = conv_result.get("conversation_id")
+            
+            if not conversation_id:
+                logger.error(f"无法获取conversation_id，响应: {conv_result}")
+                raise HTTPException(status_code=500, detail="无法创建分析会话")
+            
+            # 获取分析结果
+            url = "https://qianfan.baidubce.com/v2/app/conversation/runs"
+            
+            payload = {
+                "app_id": app_id,
+                "query": analysis_input,
+                "conversation_id": conversation_id,
+                "stream": False
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
+            }
+            
+            logger.info(f"发送分析请求，输入长度: {len(analysis_input)} 字符")
+            logger.info(f"请求payload: app_id={app_id}, conversation_id={conversation_id}, stream=False")
+            
+            async with session.post(url, json=payload, headers=headers) as response:
+                result = await response.json()
+                
+                if response.status != 200:
+                    logger.error(f"AI分析API返回错误: {result}")
+                    raise HTTPException(status_code=500, detail="AI分析失败")
+                
+                # 提取分析结果
+                logger.info(f"AI分析API响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+                # 豆包API返回的分析内容在answer字段中
+                analysis_content = result.get("answer", "")
+
+                if not analysis_content:
+                    # 如果没有answer字段，尝试其他可能的字段
+                    analysis_content = result.get("result", "") or result.get("response", "") or result.get("content", "")
+                    logger.warning(f"未在answer字段找到内容，尝试其他字段，最终内容长度: {len(analysis_content)}")
+                else:
+                    logger.info(f"成功获取分析内容，长度: {len(analysis_content)} 字符")
+                
+                # 构建返回结果
+                return {
+                    "status": "success",
+                    "data": {
+                        "analysis": analysis_content,
+                        "indicators_count": len(key_indicators['monthly_indicators']) + (1 if key_indicators['gdp'] else 0),
+                        "update_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        "data_source": "实时分析"
+                    }
+                }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"宏观经济分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"宏观经济分析失败: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

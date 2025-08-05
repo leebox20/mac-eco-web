@@ -2,7 +2,7 @@ import requests
 import json
 
 # 测试修复后的API - 查找有历史数据的指标
-url = "http://localhost:8889/api/monthly-prediction-data?page=1&page_size=20"
+url = "http://120.48.150.254:8888/api/monthly-prediction-data?page=1&page_size=20"
 response = requests.get(url)
 
 if response.status_code == 200:

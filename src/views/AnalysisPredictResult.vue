@@ -11,7 +11,7 @@
           宏观预测
         </router-link>
           <ChevronRightIcon class="h-4 w-4 text-gray-200" />
-          <span class="text-gray-200 text-sm">分析结果</span>
+          <span class="text-gray-200 text-sm">{{ indicatorId === 'macro' ? '整体宏观分析' : '分析结果' }}</span>
       </div>
     </div>
 
@@ -22,9 +22,11 @@
       <div class="mb-8">
         <div class="bg-white rounded-lg shadow-sm">
           <div class="px-6 py-4 border-b border-gray-100">
-            <h2 class="text-lg font-medium text-gray-900">预测走势</h2>
+            <h2 class="text-lg font-medium text-gray-900">
+              {{ indicatorId === 'macro' ? '关键经济指标走势' : '预测走势' }}
+            </h2>
           </div>
-          <div class="p-6 h-[400px]">
+          <div class="p-6 h-[500px]">
             <v-chart class="chart" :option="chartOption" autoresize />
           </div>
         </div>
@@ -78,6 +80,14 @@
         <p class="text-sm text-gray-500 text-center mt-6">
           {{ currentLoadingMessage }}
         </p>
+
+        <!-- 宏观分析额外loading提示 -->
+        <div v-if="indicatorId === 'macro'" class="mt-4 text-center">
+          <div class="inline-flex items-center px-4 py-2 bg-blue-50 rounded-lg">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+            <span class="text-sm text-blue-700">AI正在深度分析中，预计还需60-90秒...</span>
+          </div>
+        </div>
       </div>
 
       <!-- 分析结果区域 -->
@@ -87,11 +97,38 @@
         <div class="grid-container">
           <!-- 分析结果标题 -->
           <div class="flex items-center justify-between mb-6">
-            <h2 class="text-xl font-medium text-gray-900">分析结果</h2>
+            <h2 class="text-xl font-medium text-gray-900">{{ indicatorId === 'macro' ? '宏观经济整体分析' : '分析结果' }}</h2>
           </div>
 
-          <!-- 简化的卡片容器 - 移除分页 -->
-          <div class="grid grid-cols-2 gap-8">
+          <!-- 简化的卡片容器 - 宏观分析使用单列布局 -->
+          <div v-if="indicatorId === 'macro'" class="space-y-8">
+            <!-- 宏观分析：AI解读卡片 -->
+            <div class="bg-white rounded-lg shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-100">
+                <h3 class="text-base font-medium text-gray-900">宏观经济综合分析</h3>
+              </div>
+              <div class="p-6">
+                <div class="prose prose-sm max-w-none"
+                     v-html="renderMarkdown(analysisContent.aiInterpretation)">
+                </div>
+              </div>
+            </div>
+
+            <!-- 宏观分析：参考资料卡片 -->
+            <div class="bg-white rounded-lg shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-100">
+                <h3 class="text-base font-medium text-gray-900">数据来源与参考</h3>
+              </div>
+              <div class="p-6">
+                <div class="prose prose-sm max-w-none"
+                     v-html="renderMarkdown(analysisContent.references)">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 单个指标分析：双列布局 -->
+          <div v-else class="grid grid-cols-2 gap-8">
             <!-- 左侧：参考资料卡片 -->
             <div class="bg-white rounded-lg shadow-sm">
               <div class="px-6 py-4 border-b border-gray-100">
@@ -119,6 +156,9 @@
         </div>
       </div>
     </main>
+
+
+
     <TheFooter />
   </div>
 </template>
@@ -241,10 +281,190 @@ const chartOption = ref({
   series: []
 })
 
+// 宏观分析多指标图表更新函数
+const updateMacroChartOption = (indicators) => {
+  if (!indicators || indicators.length === 0) return
+
+  console.log('更新宏观分析图表，指标数量:', indicators.length)
+
+  // 选择主要指标进行显示（避免图表过于复杂）
+  const selectedIndicators = indicators.filter(indicator =>
+    ['GDP不变价:当季同比', '社会消费品零售总额', 'CPI', 'PPI', '工业增加值', 'M2货币供应量'].includes(indicator.name)
+  ).slice(0, 6) // 最多显示6个指标
+
+  if (selectedIndicators.length === 0) return
+
+  // 获取所有时间点的并集
+  const allDates = new Set()
+  selectedIndicators.forEach(indicator => {
+    indicator.data.forEach(point => allDates.add(point.date))
+  })
+  const sortedDates = Array.from(allDates).sort()
+
+  // 按单位分组指标
+  const percentageIndicators = [] // 百分比指标（左Y轴）
+  const absoluteIndicators = [] // 绝对值指标（右Y轴）
+
+  selectedIndicators.forEach(indicator => {
+    if (indicator.unit === '%' || indicator.name.includes('同比')) {
+      percentageIndicators.push(indicator)
+    } else {
+      absoluteIndicators.push(indicator)
+    }
+  })
+
+  // 构建系列数据
+  const series = []
+  const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272']
+  let colorIndex = 0
+
+  // 添加百分比指标系列
+  percentageIndicators.forEach(indicator => {
+    const seriesData = sortedDates.map(date => {
+      const dataPoint = indicator.data.find(d => d.date === date)
+      return dataPoint ? dataPoint.value : null
+    })
+
+    series.push({
+      name: indicator.name,
+      type: 'line',
+      yAxisIndex: 0, // 使用左Y轴
+      data: seriesData,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 4,
+      lineStyle: {
+        width: 2,
+        color: colors[colorIndex % colors.length]
+      },
+      itemStyle: {
+        color: colors[colorIndex % colors.length]
+      }
+    })
+    colorIndex++
+  })
+
+  // 添加绝对值指标系列
+  absoluteIndicators.forEach(indicator => {
+    const seriesData = sortedDates.map(date => {
+      const dataPoint = indicator.data.find(d => d.date === date)
+      return dataPoint ? dataPoint.value : null
+    })
+
+    series.push({
+      name: indicator.name,
+      type: 'line',
+      yAxisIndex: 1, // 使用右Y轴
+      data: seriesData,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 4,
+      lineStyle: {
+        width: 2,
+        color: colors[colorIndex % colors.length],
+        type: 'dashed' // 用虚线区分
+      },
+      itemStyle: {
+        color: colors[colorIndex % colors.length]
+      }
+    })
+    colorIndex++
+  })
+
+  // 更新图表配置
+  chartOption.value = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross'
+      },
+      formatter: function(params) {
+        let result = params[0].axisValue + '<br/>'
+        params.forEach(param => {
+          const indicator = selectedIndicators.find(ind => ind.name === param.seriesName)
+          const unit = indicator ? indicator.unit : ''
+          result += param.marker + ' ' + param.seriesName + ': ' +
+                   (param.value !== null ? param.value.toFixed(2) + unit : '无数据') + '<br/>'
+        })
+        return result
+      }
+    },
+    legend: {
+      data: selectedIndicators.map(ind => ind.name),
+      top: 10,
+      type: 'scroll',
+      textStyle: {
+        color: '#666'
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '8%',
+      bottom: '80px',
+      top: '60px',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: sortedDates,
+      axisLabel: {
+        rotate: 45,
+        interval: Math.floor(sortedDates.length / 12) // 控制标签密度
+      }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '百分比 (%)',
+        nameLocation: 'middle',
+        nameGap: 50,
+        position: 'left',
+        axisLabel: {
+          formatter: '{value}%'
+        }
+      },
+      {
+        type: 'value',
+        name: '绝对值',
+        nameLocation: 'middle',
+        nameGap: 50,
+        position: 'right',
+        axisLabel: {
+          formatter: function(value) {
+            if (value >= 10000) {
+              return (value / 10000).toFixed(1) + '万'
+            }
+            return value.toFixed(1)
+          }
+        }
+      }
+    ],
+    series: series,
+    dataZoom: [
+      {
+        type: 'slider',
+        show: true,
+        xAxisIndex: [0],
+        start: Math.max(0, 100 - (24 / sortedDates.length) * 100), // 默认显示最近24个月
+        end: 100
+      }
+    ]
+  }
+
+  console.log('宏观分析图表配置更新完成')
+}
+
 const updateChartOption = (data) => {
   if (!data || !data.length || !data[0]) return
 
   const currentData = data[0]
+
+  // 检查是否为宏观分析多指标数据
+  if (currentData.isMacroAnalysis && currentData.multiIndicatorData) {
+    updateMacroChartOption(currentData.multiIndicatorData)
+    return
+  }
+
   const dates = currentData.dates || []
   const values = currentData.values || []
   const isPredicted = currentData.isPredicted || []
@@ -492,6 +712,8 @@ const simulateProgress = async () => {
   await new Promise(resolve => setTimeout(resolve, 500))
 }
 
+
+
 // 从关键数据报告.md获取预设分析内容
 const getPresetAnalysisContent = (indicatorId) => {
   const analysisData = {
@@ -538,10 +760,102 @@ const getPresetAnalysisContent = (indicatorId) => {
     gdp: {
       title: '国内生产总值(GDP)',
       content: 'GDP增长保持稳定态势，经济运行总体平稳。在各项稳增长政策的支撑下，经济基本面持续向好。消费、投资、出口三大需求协调发力，为经济增长提供有力支撑。预计GDP将继续在合理区间运行，为实现全年经济社会发展目标奠定坚实基础。'
+    },
+    macro: {
+      title: '中国宏观经济整体分析',
+      content: `## 宏观经济运行总体评估
+
+当前中国经济呈现稳中向好、结构优化、动力增强的运行特征。从最新预测数据看，主要经济指标保持在合理区间，经济韧性持续显现。
+
+### 经济增长动能分析
+
+**GDP增长稳健**：2025年Q2-Q4季度GDP增速预测分别为4.86%、5.49%、5.11%，显示经济增长动能稳定。从季度走势看，经济运行呈现先抑后扬态势，下半年增长动能有望增强。
+
+**三驾马车协调发力**：
+- **消费复苏稳健**：社会消费品零售总额同比增长5.30%，消费市场持续回暖
+- **投资结构优化**：固定资产投资增长3.91%，其中制造业和基建投资保持较高增速
+- **外贸韧性强劲**：出口增长10.72%，显著超出预期，展现较强国际竞争力
+
+### 产业运行特征
+
+**工业生产强劲**：工业增加值同比增长9.16%，高技术制造业和装备制造业引领增长，产业结构持续优化升级。新能源汽车、光伏、新材料等新兴产业保持高速增长。
+
+**房地产调整延续**：房地产投资下降10.27%，行业仍在深度调整期。但一线城市房价企稳，政策效应逐步显现，预计下半年降幅有望收窄。
+
+### 价格走势分析
+
+**通胀压力较小**：
+- CPI同比仅增0.03%，物价水平保持低位运行
+- PPI同比下降2.43%，工业品价格仍有下行压力
+- 核心CPI保持稳定，显示内需温和复苏
+
+低通胀环境为货币政策提供了充足操作空间，有利于继续实施稳健偏宽松的政策取向。
+
+### 金融环境评估
+
+**流动性合理充裕**：
+- M2同比增长8.36%，保持适度扩张
+- 社会融资规模月增2.65万亿元，为实体经济提供有力支持
+- 央行维持宽松政策基调，市场流动性充裕
+
+金融对实体经济的支持力度持续加大，企业融资成本下降，有利于投资和消费需求释放。
+
+### 风险因素与政策建议
+
+**主要风险点**：
+1. 外部环境不确定性增加，地缘政治风险上升
+2. 房地产市场调整压力仍大，对相关产业链影响持续
+3. 地方政府债务风险需密切关注
+4. 青年就业压力较大，结构性矛盾突出
+
+**政策建议**：
+1. 继续实施积极的财政政策，加大基建投资力度
+2. 保持货币政策稳健偏宽松，降低实体经济融资成本
+3. 深化供给侧结构性改革，培育新质生产力
+4. 稳妥推进房地产市场调整，防范系统性风险
+5. 强化就业优先政策，特别关注青年群体就业
+
+### 展望与结论
+
+综合判断，中国经济正处于恢复向好的关键期。尽管面临诸多挑战，但经济长期向好的基本面没有改变。在政策持续发力和改革深化推进下，预计2025年经济将保持稳定增长，全年GDP增速有望达到5%左右的预期目标。
+
+建议投资者和企业密切关注政策动向，把握结构性机会，特别是在新能源、高端制造、数字经济等领域的投资机会。同时要做好风险管理，应对可能的市场波动。`
     }
   }
 
   const data = analysisData[indicatorId] || analysisData.gdp
+
+  // 对于宏观分析，直接返回完整内容
+  if (indicatorId === 'macro') {
+    return {
+      aiInterpretation: data.content,
+      references: `## 数据来源与参考
+
+### 官方统计机构
+- **国家统计局**：GDP、CPI、PPI、工业增加值、固定资产投资、社会消费品零售总额等核心指标
+- **海关总署**：进出口贸易数据
+- **中国人民银行**：M2货币供应量、社会融资规模等金融数据
+- **国家发展改革委**：宏观经济政策与投资项目审批信息
+
+### 权威研究报告
+- **政府工作报告(2025年)**：年度经济目标与政策导向
+- **中央经济工作会议公报**：经济工作总体部署
+- **一季度货币政策执行报告**：货币政策取向与金融市场分析
+- **国际货币基金组织(IMF)报告**：中国经济展望与政策建议
+
+### 行业分析数据
+- **中国银行研究院**：宏观经济金融展望
+- **国务院发展研究中心**：产业发展与改革研究
+- **中国社会科学院**：经济形势分析与预测
+- **主要券商研究所**：行业深度分析报告
+
+### 国际比较参考
+- **世界银行**：全球经济展望与中国专章
+- **经合组织(OECD)**：成员国经济数据对比
+- **亚洲开发银行**：亚洲经济一体化报告
+- **国际清算银行(BIS)**：全球金融市场分析`
+    }
+  }
 
   return {
     aiInterpretation: `## 核心数据解读
@@ -652,7 +966,7 @@ ${data.content}
   }
 }
 
-// 修改获取分析方法 - 使用预设内容
+// 修改获取分析方法 - 支持真实API调用
 const getAnalysis = async (chartData) => {
   try {
     isLoading.value = true
@@ -669,22 +983,119 @@ const getAnalysis = async (chartData) => {
       references: ''
     }
 
-    // 开始模拟进度
-    await simulateProgress()
-
-    // 验证数据
-    if (!chartData || !chartData.values || !Array.isArray(chartData.values)) {
-      throw new Error('图表数据无效')
-    }
-
     // 获取当前指标ID
     const currentIndicatorId = indicatorId.value || 'gdp'
 
-    // 使用关键数据报告.md中的预设分析内容
-    const presetContent = getPresetAnalysisContent(currentIndicatorId)
+    // 如果是宏观分析，调用真实API
+    if (currentIndicatorId === 'macro') {
+      console.log('开始调用宏观分析API...')
 
-    // 更新分析内容
-    analysisContent.value = presetContent
+      // 开始模拟进度
+      const progressPromise = simulateProgress()
+
+      try {
+        // 调用宏观分析API
+        const response = await fetch(`${API_BASE_URL}/api/macro-analysis`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        
+        if (!response.ok) {
+          throw new Error(`API请求失败: ${response.status}`)
+        }
+        
+        const result = await response.json()
+        console.log('宏观分析API响应:', result)
+        
+        if (result.status === 'success' && result.data) {
+          // 等待进度动画完成
+          await progressPromise
+
+          // 解析API返回的分析内容
+          let formattedAnalysis = ''
+          try {
+            // 尝试解析JSON格式的分析内容
+            const analysisData = JSON.parse(result.data.analysis)
+
+            // 格式化为Markdown
+            if (analysisData.Historical_Economic_Cycle_Analysis_Module) {
+              formattedAnalysis += `## 历史经济周期分析\n\n${analysisData.Historical_Economic_Cycle_Analysis_Module}\n\n`
+            }
+
+            if (analysisData.Long_term_trend_analysis_module) {
+              formattedAnalysis += `## 长期趋势分析\n\n${analysisData.Long_term_trend_analysis_module}\n\n`
+            }
+
+            if (analysisData.First_Paragraph) {
+              formattedAnalysis += `## 综合分析结论\n\n${analysisData.First_Paragraph}\n\n`
+            }
+
+            // 如果没有找到预期的字段，尝试其他可能的字段
+            if (!formattedAnalysis) {
+              Object.entries(analysisData).forEach(([key, value]) => {
+                if (typeof value === 'string' && value.trim()) {
+                  const title = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                  formattedAnalysis += `## ${title}\n\n${value}\n\n`
+                }
+              })
+            }
+
+          } catch (parseError) {
+            // 如果不是JSON格式，直接使用原始内容
+            console.log('分析内容不是JSON格式，使用原始内容')
+            formattedAnalysis = result.data.analysis || '暂无分析内容'
+          }
+
+          // 使用格式化后的分析内容
+          analysisContent.value = {
+            aiInterpretation: formattedAnalysis || '暂无分析内容',
+            references: `## 数据来源与参考
+
+### 数据统计
+- **指标数量**：${result.data.indicators_count || 0} 个
+- **更新时间**：${result.data.update_time || '未知'}
+- **数据来源**：${result.data.data_source || '实时分析'}
+
+### 官方统计机构
+- **国家统计局**：GDP、CPI、PPI、工业增加值、固定资产投资、社会消费品零售总额等核心指标
+- **海关总署**：进出口贸易数据
+- **中国人民银行**：M2货币供应量、社会融资规模等金融数据
+- **国家发展改革委**：宏观经济政策与投资项目审批信息
+
+### 权威研究报告
+- **政府工作报告(2025年)**：年度经济目标与政策导向
+- **中央经济工作会议公报**：经济工作总体部署
+- **一季度货币政策执行报告**：货币政策取向与金融市场分析
+- **国际货币基金组织(IMF)报告**：中国经济展望与政策建议`
+          }
+        } else {
+          throw new Error('API返回数据格式错误')
+        }
+        
+      } catch (apiError) {
+        console.error('宏观分析API调用失败:', apiError)
+        // 等待进度动画完成
+        await progressPromise
+        // 如果API调用失败，使用预设内容作为降级方案
+        const presetContent = getPresetAnalysisContent(currentIndicatorId)
+        analysisContent.value = presetContent
+      }
+      
+    } else {
+      // 其他指标继续使用预设内容
+      await simulateProgress()
+      
+      // 验证数据
+      if (!chartData || !chartData.values || !Array.isArray(chartData.values)) {
+        throw new Error('图表数据无效')
+      }
+      
+      // 使用关键数据报告.md中的预设分析内容
+      const presetContent = getPresetAnalysisContent(currentIndicatorId)
+      analysisContent.value = presetContent
+    }
 
     // 确保加载动画完全展示完毕后再显示结果
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -714,8 +1125,10 @@ onMounted(async () => {
     console.log('数据加载结果:', data)
 
     if (data) {
+      // 更新图表配置（包括宏观分析的多指标图表）
       console.log('更新图表配置')
       updateChartOption([data])
+
       console.log('开始AI分析')
       await getAnalysis(data)
     } else {
@@ -732,6 +1145,34 @@ const loadAPIData = async (indicatorId) => {
   try {
     console.log('开始从API加载分析结果页面数据...')
 
+    // 处理宏观整体分析
+    if (indicatorId === 'macro') {
+      // 对于宏观分析，加载多指标数据
+      console.log('加载宏观分析多指标数据...')
+
+      try {
+        // 获取关键指标时间序列数据
+        const seriesResponse = await fetch(`${API_BASE_URL}/api/key-indicators-series`)
+        if (!seriesResponse.ok) {
+          throw new Error('关键指标时间序列API请求失败')
+        }
+
+        const seriesData = await seriesResponse.json()
+        console.log('关键指标时间序列数据:', seriesData)
+
+        return {
+          isMacroAnalysis: true,
+          multiIndicatorData: seriesData.indicators || []
+        }
+      } catch (error) {
+        console.error('加载宏观分析数据失败:', error)
+        return {
+          isMacroAnalysis: true,
+          multiIndicatorData: []
+        }
+      }
+    }
+    
     if (indicatorId === 'gdp') {
       // 获取GDP季度数据
       const gdpResponse = await fetch(`${API_BASE_URL}/api/gdp-data`)

@@ -389,7 +389,7 @@ const isComparisonMode = ref(false)
 
 // 修改API基础URL
 // 本地测试环境
-// const API_BASE_URL = 'http://localhost:8888'
+// const API_BASE_URL = 'http://120.48.150.254:8888'
 // 生产环境 (部署时取消注释)
 const API_BASE_URL = 'http://120.48.150.254:8888'
 

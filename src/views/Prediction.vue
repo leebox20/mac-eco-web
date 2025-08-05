@@ -90,6 +90,29 @@
         </div>
       </div>
     </main>
+    
+    <!-- 宏观解读浮动按钮 -->
+    <div class="fixed bottom-8 right-8 z-50">
+      <router-link
+        :to="{ name: 'AnalysisPredictResult', params: { indicatorId: 'macro' } }"
+        class="group flex items-center justify-center w-16 h-16 bg-[#348FEF] text-white rounded-full shadow-lg hover:bg-[#348FEF]/90 hover:shadow-xl transition-all duration-300 transform hover:scale-110"
+        title="整体宏观解读"
+      >
+        <div class="relative">
+          <TrendingUpIcon class="h-8 w-8" />
+          <div class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+        </div>
+      </router-link>
+      
+      <!-- 悬浮提示 -->
+      <div class="absolute bottom-full right-0 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+        <div class="bg-gray-900 text-white text-sm px-3 py-2 rounded-lg whitespace-nowrap">
+          查看所有指标的整体宏观分析
+          <div class="absolute top-full right-4 w-0 h-0 border-t-8 border-t-gray-900 border-x-4 border-x-transparent"></div>
+        </div>
+      </div>
+    </div>
+    
     <TheFooter />
   </div>
 </template>
@@ -114,7 +137,8 @@ import axios from 'axios'
 
 import {
   ArrowDownWideNarrow,
-  ChevronRightIcon
+  ChevronRightIcon,
+  TrendingUpIcon
 } from 'lucide-vue-next'
 
 // 注册必须的组件

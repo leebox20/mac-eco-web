@@ -15,22 +15,22 @@ def switch_to_local():
     files_to_update = [
         {
             'file': 'src/config.js',
-            'local': "export const API_BASE_URL = 'http://localhost:8888'",
+            'local': "export const API_BASE_URL = 'http://120.48.150.254:8888'",
             'prod': "// export const API_BASE_URL = 'http://120.48.150.254:8888'"
         },
         {
             'file': 'src/config/axios.js', 
-            'local': "axios.defaults.baseURL = 'http://localhost:8888'",
+            'local': "axios.defaults.baseURL = 'http://120.48.150.254:8888'",
             'prod': "// axios.defaults.baseURL = 'http://120.48.150.254:8888'"
         },
         {
             'file': 'vite.config.js',
-            'local': "        target: 'http://localhost:8888',",
+            'local': "        target: 'http://120.48.150.254:8888',",
             'prod': "        // target: 'http://120.48.150.254:8888',"
         },
         {
             'file': 'src/views/Database.vue',
-            'local': "const API_BASE_URL = 'http://localhost:8888'",
+            'local': "const API_BASE_URL = 'http://120.48.150.254:8888'",
             'prod': "// const API_BASE_URL = 'http://120.48.150.254:8888'"
         }
     ]
@@ -41,7 +41,7 @@ def switch_to_local():
     print("✅ 已切换到本地测试环境")
     print("📝 本地配置:")
     print("   - 前端开发服务器: http://localhost:5173")
-    print("   - 后端API服务器: http://localhost:8888")
+    print("   - 后端API服务器: http://120.48.150.254:8888")
 
 def switch_to_production():
     """切换到生产环境"""
@@ -50,22 +50,22 @@ def switch_to_production():
     files_to_update = [
         {
             'file': 'src/config.js',
-            'local': "// export const API_BASE_URL = 'http://localhost:8888'",
+            'local': "// export const API_BASE_URL = 'http://120.48.150.254:8888'",
             'prod': "export const API_BASE_URL = 'http://120.48.150.254:8888'"
         },
         {
             'file': 'src/config/axios.js',
-            'local': "// axios.defaults.baseURL = 'http://localhost:8888'", 
+            'local': "// axios.defaults.baseURL = 'http://120.48.150.254:8888'", 
             'prod': "axios.defaults.baseURL = 'http://120.48.150.254:8888'"
         },
         {
             'file': 'vite.config.js',
-            'local': "        // target: 'http://localhost:8888',",
+            'local': "        // target: 'http://120.48.150.254:8888',",
             'prod': "        target: 'http://120.48.150.254:8888',"
         },
         {
             'file': 'src/views/Database.vue',
-            'local': "// const API_BASE_URL = 'http://localhost:8888'",
+            'local': "// const API_BASE_URL = 'http://120.48.150.254:8888'",
             'prod': "const API_BASE_URL = 'http://120.48.150.254:8888'"
         }
     ]
@@ -148,9 +148,9 @@ def show_current_config():
         with open(config_file, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        if 'localhost:8888' in content and not content.count('// export const API_BASE_URL') > content.count('export const API_BASE_URL'):
+        if '120.48.150.254:8888' in content and not content.count('// export const API_BASE_URL') > content.count('export const API_BASE_URL'):
             print("🟢 当前环境: 本地测试环境")
-            print("   - API地址: http://localhost:8888")
+            print("   - API地址: http://120.48.150.254:8888")
         else:
             print("🔵 当前环境: 生产环境")
             print("   - API地址: http://120.48.150.254:8888")
