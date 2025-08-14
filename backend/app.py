@@ -1,4 +1,3 @@
-
 import os
 import logging
 from typing import List, Optional
@@ -22,6 +21,8 @@ import pandas as pd
 from pathlib import Path
 import numpy as np
 from functools import lru_cache
+import re
+
 import time
 import aiohttp
 
@@ -29,6 +30,57 @@ import aiohttp
 # 设置更详细的日志格式
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# 通用工具：时间标准化与编码修复
+
+def _normalize_month(ts):
+    try:
+        s = str(ts).strip()
+        if 'M' in s and 'Q' not in s:
+            y, m = s.split('M')
+            return f"{int(y)}-{int(m):02d}"
+        if '/' in s:
+            parts = s.split('/')
+            if len(parts) >= 2:
+                return f"{int(parts[0])}-{int(parts[1]):02d}"
+        if '-' in s:
+            parts = s.split('-')
+            if len(parts) >= 2:
+                return f"{int(parts[0])}-{int(parts[1]):02d}"
+        return pd.to_datetime(s).strftime('%Y-%m')
+    except Exception:
+        return str(ts)
+
+
+def _normalize_quarter(ts):
+    s = str(ts).strip()
+    m = re.match(r"^(\d{4})\s*[Qq]([1-4])$", s)
+    if m:
+        return f"{m.group(1)}Q{m.group(2)}"
+    return s
+
+
+def ensure_utf8(path: str):
+    try:
+        # 如果已是utf-8可读，直接返回
+        with open(path, 'r', encoding='utf-8') as f:
+            _ = f.read(100)
+        return
+    except Exception:
+        pass
+    # 尝试以常见中文编码读取并转存为utf-8
+    for enc in ['gbk', 'gb2312']:
+        try:
+            with open(path, 'r', encoding=enc) as f:
+                content = f.read()
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            logger.info(f"已将文件转为UTF-8编码: {path} (原编码 {enc})")
+            return
+        except Exception:
+            continue
+    logger.warning(f"无法自动转码为UTF-8: {path}")
 
 
 # 数据库设置
@@ -60,29 +112,29 @@ async def get_baidu_token():
         'client_id': API_KEY,
         'client_secret': SECRET_KEY
     }
-    
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(TOKEN_URL, params=params)
             result = response.json()
-            
+
             if 'access_token' in result and 'scope' in result:
                 if SCOPE and (SCOPE not in result['scope'].split(' ')):
                     raise HTTPException(status_code=400, detail='scope is not correct')
-                
+
                 logger.info(f"成功获取 TOKEN: {result['access_token']}; 期时间(秒): {result['expires_in']}")
                 return result['access_token']
             else:
                 raise HTTPException(status_code=400, detail='API_KEY 或 SECRET_KEY 可能不正确: 在 token 响应中未找到 access_token 或 scope')
-        
+
         except httpx.RequestError as e:
             logger.error(f"获取 token 时发生网络错误: {str(e)}")
             raise HTTPException(status_code=500, detail=f"获取 token 时发生网络错误: {str(e)}")
-        
+
         except json.JSONDecodeError as e:
             logger.error(f"解析 token 响应时发生错误: {str(e)}")
             raise HTTPException(status_code=500, detail=f"解析 token 响应时发生错误: {str(e)}")
-    
+
 class Conversation(Base):
     __tablename__ = "conversations"
     id = Column(Integer, primary_key=True, index=True)
@@ -109,31 +161,31 @@ async def process_all_data():
         try:
             logger.info(f"处理数据文件: {file_name}")
             df = pd.read_csv(f'data/{file_name}', encoding='utf-8', low_memory=False)  # 添加 low_memory=False
-            
+
             # 重命名第一列为 date 并设置为索引
             df = df.rename(columns={'指标名称': 'date'})
             df.set_index('date', inplace=True)
-            
+
             # 尝试解析日期，指定格式
             try:
                 df.index = pd.to_datetime(df.index, format='%Y-%m-%d')
             except ValueError:
                 # 如果指定格式失败，则使用自动推断
                 df.index = pd.to_datetime(df.index)
-            
+
             df.sort_index(inplace=True)
-            
+
             # 清理数据：移除逗号，转换为数值类型，处理无效值
             for col in df.columns:
                 df[col] = df[col].apply(lambda x: str(x).replace(',', '') if pd.notnull(x) else x)
                 df[col] = pd.to_numeric(df[col], errors='coerce')  # 使用coerce将无效值转换为NaN
                 # 将无限值替换为 NaN
                 df[col] = df[col].replace([np.inf, -np.inf], np.nan)
-            
+
             # 存储处理后的数据
             processed_data[data_type] = df
             logger.info(f"成功处理数据文件: {file_name}, 包含 {len(df.columns)} 个指标")
-            
+
         except Exception as e:
             logger.error(f"处理数据文件 {file_name} 时出错: {str(e)}")
             raise
@@ -160,20 +212,20 @@ async def precache_priority_pages():
     """预先缓存优先级较高的页面数据"""
     logger.info("开始预缓存优先页面数据...")
     start_time = time.time()
-    
+
     # 获取总数据量
     temp_data = get_cached_page_data(1, 9, None)
     total_items = temp_data["total"]
     total_pages = (total_items + 8) // 9  # 向上取整
-    
+
     # 定义优先缓存的页面
     priority_pages = (
         # 前10页
-        list(range(1, 11)) + 
+        list(range(1, 11)) +
         # 最后10页
         list(range(max(11, total_pages - 9), total_pages + 1))
     )
-    
+
     # 预缓存优先页面
     for page in priority_pages:
         try:
@@ -181,7 +233,7 @@ async def precache_priority_pages():
             logger.debug(f"已缓存第 {page} 页")
         except Exception as e:
             logger.error(f"缓存第 {page} 页时出错: {str(e)}")
-    
+
     end_time = time.time()
     logger.info(f"优先页面预缓存完成，共 {len(priority_pages)} 页，耗时: {end_time - start_time:.2f}秒")
 
@@ -192,15 +244,15 @@ async def background_cache_task():
         temp_data = get_cached_page_data(1, 9, None)
         total_items = temp_data["total"]
         total_pages = (total_items + 8) // 9
-        
+
         # 获取所有需要缓存的页面
         all_pages = set(range(1, total_pages + 1))
         # 排除已经缓存的优先页面
         priority_pages = set(list(range(1, 21)) + list(range(max(21, total_pages - 19), total_pages + 1)))
         remaining_pages = all_pages - priority_pages
-        
+
         logger.info(f"开始后台缓存剩余 {len(remaining_pages)} 页...")
-        
+
         for page in remaining_pages:
             try:
                 get_cached_page_data(page, 9, None)
@@ -210,9 +262,9 @@ async def background_cache_task():
                 await asyncio.sleep(0.1)
             except Exception as e:
                 logger.error(f"后台缓存第 {page} 页时出错: {str(e)}")
-                
+
         logger.info("后台缓存任务完成")
-        
+
     except Exception as e:
         logger.error(f"后台缓存任务出错: {str(e)}")
 
@@ -250,7 +302,7 @@ def get_db():
 async def make_api_call(endpoint: str, method: str = "POST", data: dict = None, files: dict = None, timeout: float = 30.0):
     url = f"{BASE_URL}/{endpoint}"
     headers = HEADERS.copy()
-    
+
     logger.info(f"正在调用 API: {url}")
     logger.info(f"请求数据: {data}")
 
@@ -263,9 +315,9 @@ async def make_api_call(endpoint: str, method: str = "POST", data: dict = None, 
                 response = await client.post(url, headers=headers, json=data)
         else:
             response = await client.get(url, headers=headers, params=data)
-    
+
     logger.info(f"收到响应状态码: {response.status_code}")
-    
+
     try:
         return {
             "status_code": response.status_code,
@@ -286,12 +338,12 @@ async def create_conversation(db: Session = Depends(get_db)):
     result = await make_api_call("conversation", data=data)
     if result["status_code"] != 200:
         raise HTTPException(status_code=result["status_code"], detail=result["content"])
-    
+
     conversation_id = result["content"]["conversation_id"]
     db_conversation = Conversation(conversation_id=conversation_id)
     db.add(db_conversation)
     db.commit()
-    
+
     return result["content"]
 
 @app.post("/upload_file")
@@ -306,7 +358,7 @@ async def upload_file(
         "conversation_id": conversation_id
     }
     files = {"file": (file.filename, file.file, file.content_type)}
-    
+
     result = await make_api_call("conversation/file/upload", data=data, files=files)
     if result["status_code"] != 200:
         raise HTTPException(status_code=result["status_code"], detail=result["content"])
@@ -321,7 +373,7 @@ class ChatRequest(BaseModel):
 async def make_api_call_stream(endpoint: str, data: dict):
     url = f"{BASE_URL}/{endpoint}"
     headers = HEADERS.copy()
-    
+
     async with httpx.AsyncClient(timeout=None) as client:
         async with client.stream("POST", url, headers=headers, json=data) as response:
             async for chunk in response.aiter_text():
@@ -341,8 +393,8 @@ def save_message(db: Session, conversation_id: str, role: str, content: str):
 @app.post("/stream")
 async def stream(
     db: Session = Depends(get_db),
-    conversation_id: str = Body(...), 
-    query: str = Body(...), 
+    conversation_id: str = Body(...),
+    query: str = Body(...),
     file_ids: List[str] = Body(default=None)
 ):
     # 保存用户查询
@@ -422,17 +474,17 @@ async def chat(
         }
         if chat_request.file_ids:
             data["file_ids"] = chat_request.file_ids
-        
+
         background_tasks.add_task(save_message, db, chat_request.conversation_id, "user", chat_request.query)
-        
+
         result = await make_api_call("conversation/runs", data=data, timeout=120.0)
         if result["status_code"] != 200:
             logger.error(f"API 调用错误: {result['content']}")
             raise HTTPException(status_code=result["status_code"], detail=result["content"])
-        
+
         assistant_content = result["content"]["result"]
         background_tasks.add_task(save_message, db, chat_request.conversation_id, "assistant", assistant_content)
-        
+
         return result["content"]
     except Exception as e:
         logger.error(f"聊天处理错误: {str(e)}")
@@ -458,7 +510,7 @@ async def get_conversation_messages(conversation_id: str, db: Session = Depends(
 async def asr(file: UploadFile = File(...)):
     contents = await file.read()
     logger.debug(f"Received audio file of size: {len(contents)} bytes")
-    
+
     try:
         text = await speech_to_text(contents)
         logger.info(f"ASR result: {text}")
@@ -531,9 +583,9 @@ async def text_to_speech_api(text: str):
 
 async def text_to_speech(text: str):
     url = "http://tsn.baidu.com/text2audio"
-    
+
     token = await get_baidu_token()
-    
+
     params = {
         "tex": text,
         "tok": token,
@@ -546,14 +598,14 @@ async def text_to_speech(text: str):
         "per": 0,
         "aue": 4  # 改为4,返回pcm-16k格式
     }
-    
+
     response = requests.get(url, params=params)
-    
+
     if response.headers["Content-Type"].startswith("audio/basic"):
         return response.content
     else:
         raise Exception(f"TTS错误: {response.text}")
-    
+
 
 # 添加新的数据模型
 class ChartDataResponse(BaseModel):
@@ -575,20 +627,20 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 def get_cached_page_data(page: int, page_size: int, search: str = None):
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
-    
+
     # 准备所有指标数据
     all_indicators = []
-    
+
     # 遍历所有数据集
     for data_type, df in processed_data.items():
         for column in df.columns:
             # 优化数据处理：一次性处理时间和数值
             times = df.index.strftime('%Y-%m-%d').tolist()
-            
+
             # 处理无效值：将 inf, -inf 和 NaN 转换为 None
             values = df[column].replace([np.inf, -np.inf], np.nan).tolist()
             values = [None if pd.isna(x) else float(x) for x in values]  # 确保数值可以被JSON序列化
-            
+
             # 创建指标对象
             indicator = {
                 'id': f"{data_type}_{column}",
@@ -598,18 +650,18 @@ def get_cached_page_data(page: int, page_size: int, search: str = None):
                 'times': times,
                 'values': values
             }
-            
+
             # 如果有搜索条件，进行过滤
             if search:
                 if search.lower() not in column.lower() and search.lower() not in data_type.lower():
                     continue
-            
+
             all_indicators.append(indicator)
-    
+
     # 计算总数和分页数据
     total = len(all_indicators)
     page_data = all_indicators[start_idx:end_idx] if all_indicators else []
-    
+
     return {
         "total": total,
         "data": page_data,
@@ -628,20 +680,20 @@ async def get_chart_data(
         # 记录开始时间
         start_time = time.time()
         logger.info(f"开始处理图表数据请求: page={page}, page_size={page_size}, search={search}")
-        
+
         # 使用缓存获取数据
         cache_key = f"{page}_{page_size}_{search}"
         result = get_cached_page_data(page, page_size, search)
-        
+
         # 记录处理时间
         process_time = time.time() - start_time
         logger.info(f"图表数据处理完成，耗时: {process_time:.3f}秒")
-        
+
         # 添加处理时间到响应中
         result["process_time"] = process_time
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"获取图表数据时出错: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -663,63 +715,120 @@ async def get_gdp_data():
     try:
         logger.info("开始获取GDP数据...")
 
-        # 强制使用update目录下的GDP完整数据文件
-        gdp_complete_file = 'update/gdp_complete_data.csv'
+        # 历史+预测（quarter.csv + 季度数据预测结果0724.csv）
+        hist_file = 'data/quarter.csv'
+        pred_file = 'data/季度数据预测结果0724.csv'
 
-        if not os.path.exists(gdp_complete_file):
-            # 备用文件路径
-            gdp_complete_file = 'data/gdp_complete_data.csv'
-            if not os.path.exists(gdp_complete_file):
-                raise HTTPException(status_code=404, detail="GDP数据文件不存在")
+        # 读取历史
+        df_hist = None
+        last_err = None
+        for enc in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                if os.path.exists(hist_file):
+                    df_hist = pd.read_csv(hist_file, encoding=enc)
+                    logger.info(f"读取历史季度文件成功: {hist_file} (编码 {enc}) 形状: {df_hist.shape}")
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+        if df_hist is None or df_hist.empty:
+            raise HTTPException(status_code=404, detail=f"历史季度文件读取失败: {last_err}")
 
-        # 直接读取GDP完整数据文件
-        df_final = pd.read_csv(gdp_complete_file, encoding='utf-8')
-        # 确保date列是datetime类型
-        df_final['date'] = pd.to_datetime(df_final['date'])
-        # 处理confidence_interval列
-        df_final['confidence_interval'] = df_final['confidence_interval'].fillna('')
-        logger.info(f"使用GDP完整数据文件: {gdp_complete_file}，共 {len(df_final)} 条记录")
+        # 读取预测
+        df_pred = None
+        last_err = None
+        for enc in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                if os.path.exists(pred_file):
+                    df_pred = pd.read_csv(pred_file, encoding=enc)
+                    logger.info(f"读取季度预测文件成功: {pred_file} (编码 {enc}) 形状: {df_pred.shape}")
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+        if df_pred is None or df_pred.empty:
+            raise HTTPException(status_code=404, detail=f"季度预测文件读取失败: {last_err}")
 
-        # 排序数据
-        df_final = df_final.sort_values('date').reset_index(drop=True)
+        # 列定位
+        time_col_h = df_hist.columns[0]
+        gdp_col_h = '中国:GDP:不变价:当季同比' if '中国:GDP:不变价:当季同比' in df_hist.columns else df_hist.columns[1]
+        time_col_p = df_pred.columns[0]
+        gdp_col_p = df_pred.columns[1]
+        var_col_p = df_pred.columns[2] if len(df_pred.columns) > 2 else None
 
-        # 准备返回数据，处理置信区间格式
-        confidence_intervals_formatted = []
-        for _, row in df_final.iterrows():
-            confidence_interval = row['confidence_interval']
-            if pd.notna(confidence_interval) and confidence_interval != '' and confidence_interval != 0:
-                try:
-                    # 如果是字符串格式的数组，需要解析
-                    if isinstance(confidence_interval, str) and '[' in confidence_interval:
-                        import ast
-                        confidence_intervals_formatted.append(ast.literal_eval(confidence_interval))
-                    else:
-                        # 如果是单个数值，转换为上下界数组
-                        interval_value = float(confidence_interval)
-                        gdp_value = float(row['gdp_value'])
-                        confidence_intervals_formatted.append([
-                            gdp_value - interval_value,
-                            gdp_value + interval_value
-                        ])
-                except:
-                    confidence_intervals_formatted.append(None)
+        # 构建历史映射与最近历史季度
+        def q_to_tuple(qs: str):
+            s = _normalize_quarter(qs)
+            try:
+                y, q = s.replace('Q', ' ').split()
+                return (int(y), int(q))
+            except Exception:
+                return (0, 0)
+
+        hist_map = {}
+        hist_quarters = []
+        for _, r in df_hist.iterrows():
+            q = _normalize_quarter(r[time_col_h])
+            v = r[gdp_col_h]
+            if pd.notna(v):
+                hist_map[q] = float(v)
+                hist_quarters.append(q)
+        if not hist_quarters:
+            raise HTTPException(status_code=500, detail='历史季度文件不含有效GDP数据')
+        last_hist_q = max(hist_quarters, key=lambda x: q_to_tuple(x))
+
+        # 预测映射
+        pred_map = {}
+        ci_map = {}
+        for _, r in df_pred.iterrows():
+            q = _normalize_quarter(r[time_col_p])
+            v = r[gdp_col_p]
+            if pd.notna(v):
+                pred_map[q] = float(v)
+                if var_col_p and pd.notna(r[var_col_p]):
+                    try:
+                        vv = float(r[var_col_p])
+                        ci_map[q] = [float(v) - vv, float(v) + vv]
+                    except Exception:
+                        pass
+
+        # 合并排序
+        all_qs = sorted(set(list(hist_map.keys()) + list(pred_map.keys())), key=lambda x: q_to_tuple(x))
+        quarters = []
+        values = []
+        is_predicted = []
+        confs = []
+        dates = []  # 保留空或与quarters一致的占位
+
+        for q in all_qs:
+            if q in pred_map:
+                val = pred_map[q]
+                ci = ci_map.get(q)
+                pred_flag = q_to_tuple(q) > q_to_tuple(last_hist_q)
             else:
-                confidence_intervals_formatted.append(None)
+                val = hist_map[q]
+                ci = None
+                pred_flag = False
+            quarters.append(q)
+            values.append(val)
+            is_predicted.append(pred_flag)
+            confs.append(ci)
+            dates.append(q)
 
         gdp_data = {
-            'dates': df_final['date'].dt.strftime('%Y-%m-%d').tolist(),
-            'quarters': df_final['quarter'].tolist(),
-            'values': df_final['gdp_value'].tolist(),
-            'is_predicted': df_final['is_predicted'].tolist(),
-            'confidence_intervals': confidence_intervals_formatted,
-            'total_records': len(df_final),
-            'latest_value': float(df_final['gdp_value'].iloc[-1]),
-            'latest_quarter': df_final['quarter'].iloc[-1],
-            'historical_count': len(df_final[~df_final['is_predicted']]),
-            'predicted_count': len(df_final[df_final['is_predicted']])
+            'dates': dates,
+            'quarters': quarters,
+            'values': values,
+            'is_predicted': is_predicted,
+            'confidence_intervals': confs,
+            'total_records': len(quarters),
+            'latest_value': float(values[-1]) if values else None,
+            'latest_quarter': quarters[-1] if quarters else None,
+            'historical_count': sum(1 for p in is_predicted if not p),
+            'predicted_count': sum(1 for p in is_predicted if p)
         }
 
-        logger.info(f"GDP数据获取完成，共 {len(df_final)} 条记录，其中预测数据 {gdp_data['predicted_count']} 条")
+        logger.info(f"GDP数据获取完成：历史{gdp_data['historical_count']}，预测{gdp_data['predicted_count']}，共{gdp_data['total_records']}个季度")
         return gdp_data
 
     except Exception as e:
@@ -736,6 +845,13 @@ async def get_monthly_prediction_data(
     """获取月度预测数据，合并历史数据和预测数据"""
     try:
         logger.info(f"开始获取月度预测数据: page={page}, page_size={page_size}, search={search}")
+
+        # 计算最新可获得的历史月份（上一个自然月）
+        from datetime import datetime
+        now = datetime.now()
+        latest_month_year = now.year if now.month > 1 else now.year - 1
+        latest_month_num = now.month - 1 if now.month > 1 else 12
+        latest_month_str = f"{latest_month_year}-{latest_month_num:02d}"
 
         # 读取完整合并数据文件
         merged_file = 'update/月度数据完整合并结果.csv'
@@ -809,10 +925,17 @@ async def get_monthly_prediction_data(
                         times.pop()
                         continue
 
-                    # 检查并处理(预测)标记
-                    if '(预测)' in value_str:
-                        is_pred = True
-                        value_str = value_str.replace('(预测)', '').strip()
+                    # 优先根据时间动态判断预测/历史
+                    try:
+                        y, m, *_ = date_str.split('-')
+                        y, m = int(y), int(m)
+                        ly, lm = map(int, latest_month_str.split('-'))
+                        is_pred = (y, m) > (ly, lm)
+                    except Exception:
+                        # 回退：检查(预测)字样
+                        if '(预测)' in value_str:
+                            is_pred = True
+                            value_str = value_str.replace('(预测)', '').strip()
 
                     # 移除逗号并尝试转换为浮点数
                     try:
@@ -927,144 +1050,108 @@ async def get_key_indicators():
         logger.info(f"最新可用季度数据: {latest_quarter}")
         logger.info(f"最新可用月度数据: {latest_month_str}")
 
-        # 1. 获取GDP数据 - 返回最新可用季度的数据
-        gdp_file = 'data/gdp_complete_data.csv'
+        # 1. 获取GDP数据 - 仅用 新的预测文件 data/季度数据预测结果0724.csv
+        gdp_pred_file = 'data/季度数据预测结果0724.csv'
         gdp_data = None
-        if os.path.exists(gdp_file):
-            df_gdp = pd.read_csv(gdp_file, encoding='utf-8')
+        if os.path.exists(gdp_pred_file):
+            df_q = None
+            last_err = None
+            for enc in ['utf-8', 'gbk', 'gb2312']:
+                try:
+                    df_q = pd.read_csv(gdp_pred_file, encoding=enc)
+                    logger.info(f"读取季度预测文件成功: {gdp_pred_file} (编码 {enc}) 形状: {df_q.shape}")
+                    break
+                except Exception as e:
+                    last_err = e
+                    continue
+            if df_q is None:
+                raise HTTPException(status_code=500, detail=f"读取季度预测文件失败: {last_err}")
 
-            # 查找最新可用季度的数据
-            latest_quarter_data = df_gdp[df_gdp['quarter'] == latest_quarter]
-            if not latest_quarter_data.empty:
-                # 找到最新可用季度数据
-                row = latest_quarter_data.iloc[-1]  # 如果有多行，取最后一行
-                gdp_data = {
-                    'name': 'GDP不变价:当季同比',
-                    'value': float(row['gdp_value']),
-                    'quarter': row['quarter'],
-                    'unit': '%',
-                    'is_predicted': bool(row['is_predicted'])
-                }
-                logger.info(f"找到最新可用季度 {latest_quarter} 的GDP数据: {gdp_data['value']}%")
-            else:
-                # 如果没找到目标季度，查找最近的季度数据
-                logger.warning(f"未找到目标季度 {latest_quarter} 的GDP数据，使用最新可用数据")
-                latest_row = df_gdp.iloc[-1]
-                gdp_data = {
-                    'name': 'GDP不变价:当季同比',
-                    'value': float(latest_row['gdp_value']),
-                    'quarter': latest_row['quarter'],
-                    'unit': '%',
-                    'is_predicted': bool(latest_row['is_predicted'])
-                }
+            time_col = df_q.columns[0]
+            gdp_col = df_q.columns[1]  # 第二列为预测值
+            var_col = df_q.columns[2] if len(df_q.columns) > 2 else None
+            # 标准化季度编码
+            df_q[time_col] = df_q[time_col].apply(_normalize_quarter)
 
-        # 2. 获取其他月度指标数据 - 返回最新可用月份的数据
+            # 选择“紧邻当前最新季度之后”的预测（优先选 > latest_quarter 的最小季度；否则回退到最后一行）
+            def q_to_tuple(qs: str):
+                try:
+                    y, q = qs.replace('Q', ' ').split()
+                    return (int(y), int(q))
+                except Exception:
+                    return (0, 0)
+
+            target_row = None
+            if 'latest_quarter' in locals():
+                lty, ltq = q_to_tuple(str(latest_quarter))
+                future_rows = []
+                for _, r in df_q.dropna(subset=[gdp_col]).iterrows():
+                    qt = q_to_tuple(str(r[time_col]))
+                    if qt > (lty, ltq):
+                        future_rows.append((qt, r))
+                if future_rows:
+                    future_rows.sort(key=lambda x: x[0])
+                    target_row = future_rows[0][1]
+            if target_row is None:
+                target_row = df_q.dropna(subset=[gdp_col]).iloc[-1]
+
+            q_code = str(target_row[time_col])
+            gdp_val = float(target_row[gdp_col])
+            ci = None
+            if var_col and pd.notna(target_row[var_col]):
+                try:
+                    v = float(target_row[var_col])
+                    ci = [gdp_val - v, gdp_val + v]
+                except Exception:
+                    ci = None
+            gdp_data = {
+                'name': 'GDP不变价:当季同比',
+                'value': gdp_val,
+                'quarter': q_code,
+                'unit': '%',
+                'is_predicted': True,
+                'confidence_interval': ci
+            }
+            logger.info(f"(季度预测0724) 选用季度 {q_code}: {gdp_val}%")
+        else:
+            raise HTTPException(status_code=404, detail="季度预测文件不存在")
+
+        # 2. 月度关键指标（预测） - 仅使用 data/月度关键数据预测结果0724.csv
         monthly_indicators = []
 
-        # 优先使用含区间的月度数据文件
-        monthly_file_with_interval = 'update/月度关键数据预测结果含区间.csv'
-        monthly_file_original = 'update/月度关键数据预测结果.csv'
-        merged_file = 'data/DATAMERGED-20241203-完整数据集-修复版.csv'
-
-        # 按优先级尝试读取文件
+        monthly_pred_file = 'data/月度关键数据预测结果0724.csv'
         df_monthly = None
-        data_source = None
-
-        # 1. 优先尝试含区间的文件
-        if os.path.exists(monthly_file_with_interval):
-            for encoding in ['utf-8', 'gbk', 'gb2312']:
-                try:
-                    df_monthly = pd.read_csv(monthly_file_with_interval, encoding=encoding)
-                    data_source = 'interval'
-                    logger.info(f"使用含区间数据文件，编码: {encoding}，形状: {df_monthly.shape}")
+        for enc in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                if os.path.exists(monthly_pred_file):
+                    df_monthly = pd.read_csv(monthly_pred_file, encoding=enc)
+                    logger.info(f"使用月度预测文件 {monthly_pred_file} ({enc}) 形状: {df_monthly.shape}")
                     break
-                except UnicodeDecodeError:
-                    continue
-
-        # 2. 如果含区间文件不存在或读取失败，尝试原始文件
-        if df_monthly is None and os.path.exists(monthly_file_original):
-            for encoding in ['utf-8', 'gbk', 'gb2312']:
-                try:
-                    df_monthly = pd.read_csv(monthly_file_original, encoding=encoding)
-                    data_source = 'original'
-                    logger.info(f"使用原始数据文件，编码: {encoding}，形状: {df_monthly.shape}")
-                    break
-                except UnicodeDecodeError:
-                    continue
-
-        # 3. 最后尝试合并文件
-        if df_monthly is None and os.path.exists(merged_file):
-            df_monthly = pd.read_csv(merged_file, encoding='utf-8')
-            df_monthly['date'] = pd.to_datetime(df_monthly['date'])
-            df_monthly = df_monthly.sort_values('date')
-            data_source = 'merged'
-            logger.info(f"使用合并数据文件，形状: {df_monthly.shape}")
+            except UnicodeDecodeError:
+                continue
+        if df_monthly is None or df_monthly.empty:
+            raise HTTPException(status_code=404, detail="未找到月度关键数据预测结果文件")
+        data_source = 'interval'  # 含 variation 的预测
 
         if df_monthly is not None and not df_monthly.empty:
             # 查找最新可用月份的数据，而不是最新一行
             target_row = None
             target_date = latest_month_str
 
-            # 根据数据源类型查找最新可用月份数据
-            if data_source == 'merged':
-                # 对于合并文件，直接按日期查找
-                df_monthly['date'] = pd.to_datetime(df_monthly['date'])
-                target_month_data = df_monthly[df_monthly['date'].dt.strftime('%Y-%m') == latest_month_str]
-                if not target_month_data.empty:
-                    target_row = target_month_data.iloc[-1]  # 如果有多行，取最后一行
-                    target_date = target_row['date'].strftime('%Y-%m')
-                    logger.info(f"找到最新可用月份 {latest_month_str} 的数据")
-                else:
-                    logger.warning(f"未找到最新可用月份 {latest_month_str} 的数据，使用最新可用数据")
-                    target_row = df_monthly.iloc[-1]
-                    target_date = target_row['date'].strftime('%Y-%m')
+            # 预测文件第一列 timestamp，规范化后与最新可用月匹配
+            time_col = df_monthly.columns[0]
+            df_monthly[time_col] = df_monthly[time_col].apply(_normalize_month)
+            target_month_data = df_monthly[df_monthly[time_col] == latest_month_str]
+            if not target_month_data.empty:
+                target_row = target_month_data.iloc[-1]  # 如果有多行，取最后一行
+                target_date = latest_month_str
+                logger.info(f"找到最新可用月份 {latest_month_str} 的数据")
             else:
-                # 对于其他文件格式，需要解析第一列的日期
-                found_target_month = False
-                for idx, row in df_monthly.iterrows():
-                    date_raw = row.iloc[0]  # 第一列是日期
-                    if isinstance(date_raw, str):
-                        try:
-                            parsed_date = None
-                            if 'M' in date_raw:
-                                # 处理 2025M06 格式
-                                year, month = date_raw.split('M')
-                                parsed_date = f"{year}-{month.zfill(2)}"
-                            elif '/' in date_raw:
-                                # 处理 2025/6/30 格式
-                                parts = date_raw.split('/')
-                                if len(parts) >= 2:
-                                    parsed_date = f"{parts[0]}-{parts[1].zfill(2)}"
-                            else:
-                                parsed_date = pd.to_datetime(date_raw).strftime('%Y-%m')
+                logger.warning(f"未找到最新可用月份 {latest_month_str} 的数据，使用最新可用数据")
+                target_row = df_monthly.iloc[-1]
+                target_date = str(target_row[time_col])
 
-                            if parsed_date == latest_month_str:
-                                target_row = row
-                                target_date = parsed_date
-                                found_target_month = True
-                                logger.info(f"找到最新可用月份 {latest_month_str} 的数据")
-                                break
-                        except:
-                            continue
 
-                if not found_target_month:
-                    logger.warning(f"未找到最新可用月份 {latest_month_str} 的数据，使用最新可用数据")
-                    target_row = df_monthly.iloc[-1]
-                    # 解析最新数据的日期
-                    latest_date_raw = target_row.iloc[0]
-                    if isinstance(latest_date_raw, str):
-                        try:
-                            if 'M' in latest_date_raw:
-                                year, month = latest_date_raw.split('M')
-                                target_date = f"{year}-{month.zfill(2)}"
-                            elif '/' in latest_date_raw:
-                                parts = latest_date_raw.split('/')
-                                if len(parts) >= 2:
-                                    target_date = f"{parts[0]}-{parts[1].zfill(2)}"
-                            else:
-                                target_date = pd.to_datetime(latest_date_raw).strftime('%Y-%m')
-                        except:
-                            target_date = str(latest_date_raw)
 
             # 如果找到了目标行数据，处理各个指标
             if target_row is not None:
@@ -1087,17 +1174,13 @@ async def get_key_indicators():
                     if column in df_monthly.columns:
                         value = target_row[column]
                         if pd.notna(value):
-                            # 判断是否为预测数据 - 基于目标日期判断
-                            if data_source == 'merged':
-                                is_predicted = pd.to_datetime(target_date).year >= 2025 and pd.to_datetime(target_date).month >= 6
-                            else:
-                                # 2025年6月及以后为预测数据
-                                year_month = target_date.split('-')
-                                if len(year_month) == 2:
-                                    year, month = int(year_month[0]), int(year_month[1])
-                                    is_predicted = year > 2025 or (year == 2025 and month >= 6)
-                                else:
-                                    is_predicted = '2025' in str(target_date)
+                            # 判断是否为预测数据：当月是否晚于“最新可获得历史月”（上一个月）
+                            try:
+                                ty, tm = map(int, str(target_date).split('-')[:2])
+                                ly, lm = map(int, str(latest_month_str).split('-')[:2])
+                                is_predicted = (ty, tm) > (ly, lm)
+                            except Exception:
+                                is_predicted = False
 
                             # 处理置信区间（仅当使用含区间文件时）
                             confidence_interval = None
@@ -1143,23 +1226,32 @@ async def get_key_indicators_series():
     try:
         logger.info("开始获取关键指标时间序列数据...")
 
-        # 优先使用含区间的月度数据文件
-        monthly_file_with_interval = 'update/月度关键数据预测结果含区间.csv'
-        
-        df_monthly = None
-        
-        # 尝试读取含区间的文件
-        if os.path.exists(monthly_file_with_interval):
-            for encoding in ['utf-8', 'gbk', 'gb2312']:
-                try:
-                    df_monthly = pd.read_csv(monthly_file_with_interval, encoding=encoding)
-                    logger.info(f"使用含区间数据文件，编码: {encoding}，形状: {df_monthly.shape}")
+        # 读取历史与预测（方案A）
+        hist_file = 'data/monthly.csv'
+        pred_file = 'data/月度关键数据预测结果0724.csv'
+        df_hist = None
+        for enc in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                if os.path.exists(hist_file):
+                    df_hist = pd.read_csv(hist_file, encoding=enc)
+                    logger.info(f"使用历史文件 {hist_file} (编码 {enc}) 形状: {df_hist.shape}")
                     break
-                except UnicodeDecodeError:
-                    continue
+            except Exception:
+                continue
+        if df_hist is None:
+            logger.warning("历史文件读取失败或不存在，将仅输出预测序列")
 
-        if df_monthly is None or df_monthly.empty:
-            raise HTTPException(status_code=404, detail="未找到关键指标数据文件")
+        df_interval = None
+        for enc in ['utf-8', 'gbk', 'gb2312']:
+            try:
+                if os.path.exists(pred_file):
+                    df_interval = pd.read_csv(pred_file, encoding=enc)
+                    logger.info(f"使用预测文件 {pred_file} (编码 {enc}) 形状: {df_interval.shape}")
+                    break
+            except Exception:
+                continue
+        if df_interval is None or df_interval.empty:
+            raise HTTPException(status_code=404, detail="未找到月度关键数据预测结果0724.csv")
 
         # 定义关键指标映射
         key_indicators_mapping = [
@@ -1179,81 +1271,72 @@ async def get_key_indicators_series():
 
         # 处理时间序列数据
         indicators_series = []
-        
+
+        from datetime import datetime
+        now = datetime.now()
+        latest_month_year = now.year if now.month > 1 else now.year - 1
+        latest_month_num = now.month - 1 if now.month > 1 else 12
+        latest_month_str = f"{latest_month_year}-{latest_month_num:02d}"
+
         for indicator in key_indicators_mapping:
             column = indicator['column']
-            if column in df_monthly.columns:
-                # 获取该指标的所有数据
-                series_data = []
-                
-                for idx, row in df_monthly.iterrows():
-                    timestamp_raw = row.iloc[0]  # 第一列是时间戳
-                    value = row[column]
-                    
-                    if pd.notna(value):
-                        # 处理时间格式
+            series_map = {}
+
+            # 先放入历史（月度历史基准）
+            if df_hist is not None and column in df_hist.columns:
+                time_col_h = df_hist.columns[0]
+                for _, row in df_hist.iterrows():
+                    d_fmt = _normalize_month(row[time_col_h])
+                    v = row[column]
+                    if pd.notna(v):
+                        series_map[d_fmt] = {
+                            'date': d_fmt,
+                            'value': float(v),
+                            'is_predicted': False,
+                            'confidence_interval': None
+                        }
+
+            # 再覆盖/追加预测（固定预测文件）
+            if column in df_interval.columns:
+                time_col_p = df_interval.columns[0]
+                for _, row in df_interval.iterrows():
+                    d_fmt = _normalize_month(row[time_col_p])
+                    val = row[column]
+                    if pd.notna(val):
                         try:
-                            if isinstance(timestamp_raw, str):
-                                if '/' in timestamp_raw:
-                                    # 处理 2025/6/30 格式
-                                    parts = timestamp_raw.split('/')
-                                    if len(parts) >= 2:
-                                        date_str = f"{parts[0]}-{parts[1].zfill(2)}"
-                                elif 'M' in timestamp_raw:
-                                    # 处理 2025M06 格式
-                                    year, month = timestamp_raw.split('M')
-                                    date_str = f"{year}-{month.zfill(2)}"
-                                else:
-                                    date_str = pd.to_datetime(timestamp_raw).strftime('%Y-%m')
-                            else:
-                                date_str = pd.to_datetime(timestamp_raw).strftime('%Y-%m')
-                        except:
-                            date_str = str(timestamp_raw)
-                        
-                        # 判断是否为预测数据（2025年6月及以后）
-                        try:
-                            year, month = date_str.split('-')
-                            year = int(year)
-                            month = int(month)
-                            is_predicted = year > 2025 or (year == 2025 and month >= 6)
-                        except:
-                            is_predicted = '2025' in date_str
-                        
-                        # 处理置信区间
-                        confidence_interval = None
-                        variation_column = f"{column}_variation"
-                        if variation_column in df_monthly.columns:
-                            variation = row[variation_column]
-                            if pd.notna(variation):
-                                confidence_interval = [
-                                    float(value) - float(variation), 
-                                    float(value) + float(variation)
-                                ]
-                        
-                        series_data.append({
-                            'date': date_str,
-                            'value': float(value),
-                            'is_predicted': is_predicted,
-                            'confidence_interval': confidence_interval
-                        })
-                
-                if series_data:
-                    # 按日期排序
-                    series_data.sort(key=lambda x: x['date'])
-                    
-                    indicators_series.append({
-                        'name': indicator['name'],
-                        'column': column,
-                        'unit': indicator['unit'],
-                        'data': series_data,
-                        'total_points': len(series_data)
-                    })
+                            ty, tm = map(int, d_fmt.split('-')[:2])
+                            ly, lm = map(int, latest_month_str.split('-')[:2])
+                            is_pred = (ty, tm) > (ly, lm)
+                        except Exception:
+                            is_pred = False
+                        ci = None
+                        var_col = f"{column}_variation"
+                        if var_col in df_interval.columns:
+                            var = row[var_col]
+                            if pd.notna(var):
+                                ci = [float(val) - float(var), float(val) + float(var)]
+                        series_map[d_fmt] = {
+                            'date': d_fmt,
+                            'value': float(val),
+                            'is_predicted': is_pred,
+                            'confidence_interval': ci
+                        }
+
+            if series_map:
+                series_list = sorted(series_map.values(), key=lambda x: x['date'])
+                indicators_series.append({
+                    'name': indicator['name'],
+                    'column': column,
+                    'unit': indicator['unit'],
+                    'data': series_list,
+                    'total_points': len(series_list)
+                })
 
         # 组合返回数据
         result = {
             'indicators': indicators_series,
             'total_indicators': len(indicators_series),
-            'data_source': '月度关键数据预测结果含区间.csv',
+            'data_source': 'monthly.csv + 月度关键数据预测结果0724.csv',
             'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
 
@@ -1274,7 +1357,7 @@ async def analyze_gdp(prediction_value: float = Body(...)):
             {"name": "GDP数据分析流3", "app_id": "72cbf1cd-2dac-479d-8000-3e2c5fe04b3a"},
             {"name": "GDP数据分析流4", "app_id": "01430645-90a5-4032-97e8-b9630e1fc579"}
         ]
-        
+
         async with aiohttp.ClientSession() as session:
             # 先处理第一个API
             first_result = await process_api(session, apis[0]["app_id"], prediction_value, apis[0]["name"])
@@ -1283,13 +1366,13 @@ async def analyze_gdp(prediction_value: float = Body(...)):
                 "index": 1,
                 "data": first_result
             }) + "\n"
-            
+
             # 并发处理剩余的API
             remaining_tasks = [
                 process_api(session, api["app_id"], prediction_value, api["name"])
                 for api in apis[1:]
             ]
-            
+
             # 按顺序获取并返回剩余结果
             for i, result in enumerate(await asyncio.gather(*remaining_tasks), 2):
                 yield json.dumps({
@@ -1312,35 +1395,35 @@ async def analyze_gdp(prediction_value: float = Body(...)):
 async def get_conversation_id(session, app_id):
     """获取对话ID"""
     url = "https://qianfan.baidubce.com/v2/app/conversation"
-    
+
     payload = {
         "app_id": app_id
     }
-    
+
     headers = {
         "Content-Type": "application/json",
         "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
     }
-    
+
     async with session.post(url, json=payload, headers=headers) as response:
         return await response.json()
 
 async def get_analysis_result(session, app_id, conversation_id, prediction_value):
     """获取分析结果"""
     url = "https://qianfan.baidubce.com/v2/app/conversation/runs"
-    
+
     payload = {
         "app_id": app_id,
         "query": str(prediction_value),
         "conversation_id": conversation_id,
         "stream": False
     }
-    
+
     headers = {
         "Content-Type": "application/json",
         "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
     }
-    
+
     async with session.post(url, json=payload, headers=headers) as response:
         return await response.json()
 
@@ -1350,7 +1433,7 @@ async def process_api(session, app_id, prediction_value, api_name):
         # 获取conversation_id
         conv_result = await get_conversation_id(session, app_id)
         conversation_id = conv_result.get("conversation_id")
-        
+
         # 获取分析结果
         result = await get_analysis_result(session, app_id, conversation_id, prediction_value)
         return {
@@ -1372,26 +1455,26 @@ async def analyze_macro_economy():
     """获取所有关键经济指标并进行综合宏观分析"""
     try:
         logger.info("开始宏观经济整体分析...")
-        
+
         # 1. 获取所有关键经济指标的最新数据
         key_indicators = await get_key_indicators()
         logger.info(f"获取到的关键指标数据: GDP={key_indicators.get('gdp')}, 月度指标数量={len(key_indicators.get('monthly_indicators', []))}")
-        
+
         # 2. 构建分析输入文本
         analysis_input = "请对以下中国宏观经济指标进行深度综合分析：\n\n"
-        
+
         # 添加GDP数据
         if key_indicators['gdp']:
             gdp = key_indicators['gdp']
             analysis_input += f"GDP增长率({gdp['quarter']}): {gdp['value']}%\n"
-        
+
         # 添加月度指标数据
         for indicator in key_indicators['monthly_indicators']:
             analysis_input += f"{indicator['name']}({indicator['date']}): {indicator['value']}{indicator['unit']}"
             if indicator.get('is_predicted'):
                 analysis_input += " [预测值]"
             analysis_input += "\n"
-        
+
         analysis_input += "\n请使用Markdown格式，从以下角度进行深度分析：\n\n"
         analysis_input += "## 1. 宏观经济运行总体评估\n"
         analysis_input += "请综合评价当前经济运行状况，包括增长态势、结构特征、主要亮点等。\n\n"
@@ -1418,47 +1501,47 @@ async def analyze_macro_economy():
         analysis_input += "请提供具体可行的政策建议，使用有序列表。\n\n"
         analysis_input += "## 8. 展望与结论\n"
         analysis_input += "请对未来经济走势进行预判，并给出结论性观点。\n"
-        
+
         logger.info(f"构建的分析输入文本长度: {len(analysis_input)}")
-        
+
         # 3. 调用AI分析（使用第一个GDP分析API作为宏观分析API）
         app_id = "31e13499-bc62-454e-9726-10318869d707"  # GDP数据分析流1
-        
+
         async with aiohttp.ClientSession() as session:
             # 获取对话ID
             conv_result = await get_conversation_id(session, app_id)
             logger.info(f"创建对话响应: {json.dumps(conv_result, ensure_ascii=False)[:200]}")
             conversation_id = conv_result.get("conversation_id")
-            
+
             if not conversation_id:
                 logger.error(f"无法获取conversation_id，响应: {conv_result}")
                 raise HTTPException(status_code=500, detail="无法创建分析会话")
-            
+
             # 获取分析结果
             url = "https://qianfan.baidubce.com/v2/app/conversation/runs"
-            
+
             payload = {
                 "app_id": app_id,
                 "query": analysis_input,
                 "conversation_id": conversation_id,
                 "stream": False
             }
-            
+
             headers = {
                 "Content-Type": "application/json",
                 "X-Appbuilder-Authorization": "Bearer bce-v3/ALTAK-YLij17TdPMsg11izg9HAn/3168a0aea58dfbbe24023103d4dec3830d225aca"
             }
-            
+
             logger.info(f"发送分析请求，输入长度: {len(analysis_input)} 字符")
             logger.info(f"请求payload: app_id={app_id}, conversation_id={conversation_id}, stream=False")
-            
+
             async with session.post(url, json=payload, headers=headers) as response:
                 result = await response.json()
-                
+
                 if response.status != 200:
                     logger.error(f"AI分析API返回错误: {result}")
                     raise HTTPException(status_code=500, detail="AI分析失败")
-                
+
                 # 提取分析结果
                 logger.info(f"AI分析API响应: {json.dumps(result, ensure_ascii=False)[:500]}")
                 # 豆包API返回的分析内容在answer字段中
@@ -1470,7 +1553,7 @@ async def analyze_macro_economy():
                     logger.warning(f"未在answer字段找到内容，尝试其他字段，最终内容长度: {len(analysis_content)}")
                 else:
                     logger.info(f"成功获取分析内容，长度: {len(analysis_content)} 字符")
-                
+
                 # 构建返回结果
                 return {
                     "status": "success",
@@ -1481,7 +1564,7 @@ async def analyze_macro_economy():
                         "data_source": "实时分析"
                     }
                 }
-        
+
     except HTTPException:
         raise
     except Exception as e:
